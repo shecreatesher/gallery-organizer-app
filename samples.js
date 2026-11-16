@@ -1,7 +1,7 @@
 /* Gallery Organizer: "try with sample photos".
    Makes 150 small sample photos across ten years, a few exact copies (to show duplicates)
    12 tiny sample videos, 8 screenshots and 4 scans, then adds them as if picked with "Choose photos".
-   Most sample photos carry a GPS position (as phone photos do) in one of six cities, to show City. */
+   Most sample photos carry a GPS position (as phone photos do) in one of six cities, to show Country. */
 (() => {
   "use strict";
   /* ---------- Sample photos (with a few real duplicates) ---------- */

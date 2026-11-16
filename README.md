@@ -1,6 +1,6 @@
 # Gallery Organizer
 
-Gathers photos and videos from many folders on your computer into one tidy library, sorted by year, month or city, with duplicates set aside. It runs in your browser: nothing is uploaded, and your original photos are never moved, renamed or deleted. It only makes copies.
+Gathers photos and videos from many folders on your computer into one tidy library, sorted by year, month or country, with duplicates set aside. It runs in your browser: nothing is uploaded, and your original photos are never moved, renamed or deleted. It only makes copies.
 
 **Open it:** https://shecreatesher.github.io/gallery-organizer-app/
 
@@ -9,7 +9,7 @@ Works in **Chrome** or **Edge** on a computer. Other browsers can look but can't
 ## How to use it
 
 1. **Add photos** (top right): choose photos or a folder, or drag them in. Or try the sample photos.
-2. Pick **Photos from** and **Sort by** (Year, Month or City), then **Sort**.
+2. Pick **Photos from** and **Sort by** (Year, Month or Country), then **Sort**.
 3. **Check duplicates**: exact copies are set aside and won't be copied.
 4. **Create folders** → choose where → **Create library**. Chrome asks you to allow the folder you picked.
 
@@ -29,6 +29,6 @@ This is a free hobby project, provided as is, with no warranty and no support pr
 
 [MIT licence](./LICENSE).
 
-- City names: [GeoNames](https://www.geonames.org) cities15000, CC BY 4.0.
+- Place names: [GeoNames](https://www.geonames.org) cities15000, CC BY 4.0.
 - Camera date and GPS: [exifr](https://github.com/MikeKovarik/exifr), MIT (`vendor/exifr.LICENSE`).
 - Fonts: Geist and Geist Mono by Vercel, SIL Open Font License.

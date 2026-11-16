@@ -294,7 +294,7 @@
     render();
   }
 
-  // "one folder per year inside" · "a folder per city and a folder per year inside each"
+  // "one folder per year inside" · "a folder per country and a folder per year inside each"
   function layoutText() {
     const [a, b] = state().layers;
     return b ? `a folder per ${a} and a folder per ${b} inside each` : `one folder per ${a} inside`;
@@ -432,7 +432,7 @@
             const w = await fh.createWritable();
             await w.write(rec.file);
             await w.close();
-            log.copied.push({ from: rec.path, to: `${rec.target}/${name}`, size: rec.size, taken: rec.date.toISOString(), dateFrom: rec.dateSource, ...(rec.place ? { city: rec.place } : {}) });
+            log.copied.push({ from: rec.path, to: `${rec.target}/${name}`, size: rec.size, taken: rec.date.toISOString(), dateFrom: rec.dateSource, ...(rec.place ? { place: rec.place } : {}) });
           } catch (err) {
             dirs.delete(rec.target);
             log.failed.push({ from: rec.path, reason: String(err && err.message || err) });
@@ -476,16 +476,16 @@
     p.querySelector("b").textContent = flow.dryRun ? "Preview finished" : "Your library is ready";
     p.querySelector(".mono").textContent = r.where;
     const ul = p.querySelector(".tree");
-    // One row per first-layer folder, with what's inside it: "8 months", "3 cities"
-    const years = new Map();   // first-layer folders: years, months or cities
+    // One row per first-layer folder, with what's inside it: "8 months", "3 countries"
+    const years = new Map();   // first-layer folders: years, months or countries
     for (const rec of toCopy()) {
       const y = rec.target.split("/")[0];
       if (!years.has(y)) years.set(y, []);
       years.get(y).push(rec);
     }
-    const byCity = state().layers[0] === "city", unknown = A().UNKNOWN_CITY;
+    const byCountry = state().layers[0] === "country", unknown = A().UNKNOWN_COUNTRY;
     const apart = v => (v[1][0].special ? 1 : 0);   // Screenshots and Documents last
-    const order = byCity
+    const order = byCountry
       ? (a, b) => apart(a) - apart(b) || (a[0] === unknown) - (b[0] === unknown) || b[1].length - a[1].length || a[0].localeCompare(b[0])
       : (a, b) => apart(a) - apart(b) || b[0].localeCompare(a[0]);
     for (const [y, v] of [...years].sort(order)) {

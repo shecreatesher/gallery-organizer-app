@@ -22,7 +22,7 @@
     skipped: [],
     folders: [],      // after sorting: the cards around the ball, {key, name, files, color, card}
     range: { kind: "all", from: null, to: null },  // which photos: all, this year, last 12 months, last 3 years, or picked dates
-    layers: ["year"], // how to sort: one or two of "year", "month", "city", e.g. ["year", "city"] → 2024/Spain - Madrid/
+    layers: ["year"], // how to sort: one or two of "year", "month", "country", e.g. ["year", "country"] → 2024/Spain/
     targets: 0        // how many folders the new library will have
   };
   window.GalleryState = state;
@@ -446,13 +446,15 @@
      Sorting
      ========================================================= */
 
-  /* Where each photo goes in the new library: one or two layers, each Year, Month or City.
+  /* Where each photo goes in the new library: one or two layers, each Year, Month or Country.
        Year            → 2024/
        Month           → 2024-03 March/            (inside a year: 03 March/)
-       City            → Spain - Madrid/           (no GPS: Unknown city/)
+       Country         → Spain/                    (no GPS: Unknown country/)
      The first layer is the cards around the ball; the second layer is the folders inside each card. */
-  const UNKNOWN_CITY = "Unknown city";
-  const LAYER_WORDS = { year: ["year", "years"], month: ["month", "months"], city: ["city", "cities"] };
+  const UNKNOWN_COUNTRY = "Unknown country";
+  // rec.place is "Spain - Madrid"; the country is the part before the dash
+  const countryOf = place => (place ? place.split(" - ")[0] : null);
+  const LAYER_WORDS = { year: ["year", "years"], month: ["month", "months"], country: ["country", "countries"] };
   const pad2 = n => String(n).padStart(2, "0");
   const monthName = d => { const m = d.toLocaleString(undefined, { month: "long" }); return m.charAt(0).toUpperCase() + m.slice(1); };
   // Folder names safe on Mac, Windows and Linux
@@ -460,7 +462,7 @@
   function layerName(f, layer, inYear) {
     if (layer === "year") return String(f.date.getFullYear());
     if (layer === "month") return `${inYear ? "" : f.date.getFullYear() + "-"}${pad2(f.date.getMonth() + 1)} ${monthName(f.date)}`;
-    return (f.place && safeName(f.place)) || UNKNOWN_CITY;
+    return (f.place && safeName(countryOf(f.place))) || UNKNOWN_COUNTRY;
   }
   function targetOf(f) {
     f.special = specialOf(f);
@@ -469,9 +471,9 @@
     return b ? `${layerName(f, a)}/${layerName(f, b, a === "year")}` : layerName(f, a);
   }
   // Allowed second layers: anything but the first, and no year inside a month (the month already has it)
-  const secondOptions = first => ["year", "month", "city"].filter(l => l !== first && !(first === "month" && l === "year"));
+  const secondOptions = first => ["year", "month", "country"].filter(l => l !== first && !(first === "month" && l === "year"));
   const layersText = () => state.layers.join(" and ");
-  const hasCity = () => state.layers.includes("city");
+  const hasCountry = () => state.layers.includes("country");
 
   /* Kept apart automatically, whatever the sort: Screenshots/2024/ and Documents/2024/.
      Screenshots: the name says so (in many languages), or a PNG (cameras never save PNG; phones save screenshots as PNG).
@@ -523,7 +525,7 @@
     return parts.length ? `${parts.join(" and ")} kept apart` : "";
   }
 
-  // The faint line under a card (and in the final folder list): what's inside it, e.g. "8 months" or "3 cities"
+  // The faint line under a card (and in the final folder list): what's inside it, e.g. "8 months" or "3 countries"
   function subLine(files) {
     if (files.length && files[0].special) return count(new Set(files.map(f => f.target)).size, "year", "years");
     const second = state.layers[1];
@@ -531,8 +533,8 @@
     return count(new Set(files.map(f => f.target)).size, ...LAYER_WORDS[second]);
   }
 
-  // The cards: one per first-layer folder. Years and months newest first; cities biggest first, Unknown city last.
-  // More than 12: the rest share one card ("2009–2013", "Earlier months", "14 more cities").
+  // The cards: one per first-layer folder. Years and months newest first; countries biggest first, Unknown country last.
+  // More than 12: the rest share one card ("2009–2013", "Earlier months", "14 more countries").
   function planFolders(files) {
     const first = state.layers[0];
     const groups = new Map();
@@ -546,12 +548,12 @@
     SPECIAL.forEach(k => groups.delete(k));
     const slots = CARD_SLOTS - special.length;
     let folders = [...groups].map(([key, list]) => ({ key, name: key, files: list }));
-    if (first === "city") folders.sort((a, b) => (a.key === UNKNOWN_CITY) - (b.key === UNKNOWN_CITY) || b.files.length - a.files.length || a.key.localeCompare(b.key));
+    if (first === "country") folders.sort((a, b) => (a.key === UNKNOWN_COUNTRY) - (b.key === UNKNOWN_COUNTRY) || b.files.length - a.files.length || a.key.localeCompare(b.key));
     else folders.sort((a, b) => b.key.localeCompare(a.key));
     if (folders.length > slots) {
       const keep = folders.slice(0, slots - 1), rest = folders.slice(slots - 1);
       const name = first === "year" ? `${rest[rest.length - 1].name}–${rest[0].name}`
-        : first === "month" ? "Earlier months" : `${fmt(rest.length)} more cities`;
+        : first === "month" ? "Earlier months" : `${fmt(rest.length)} more countries`;
       keep.push({ key: "more", name, files: rest.flatMap(r => r.files) });
       folders = keep;
     }
@@ -612,7 +614,7 @@
       cap.querySelector(".mono").textContent = rec.name;
       cap.querySelector("b").textContent = folder.name;
       cap.querySelector("b").textContent = rec.target.split("/").join(" › ");
-      if (spotlight) cap.insertAdjacentText("beforeend", ` · ${sourceWord[rec.dateSource]} ${fmtDate(rec.date)}${hasCity() ? (rec.place ? " · GPS" : " · no GPS") : ""}`);
+      if (spotlight) cap.insertAdjacentText("beforeend", ` · ${sourceWord[rec.dateSource]} ${fmtDate(rec.date)}${hasCountry() ? (rec.place ? " · GPS" : " · no GPS") : ""}`);
       const a = relRect(tile.el);
       tile.el.classList.add("gone");
       Ball.release(tile);
@@ -729,7 +731,7 @@
 
   // Year or Month. Changing it after a sort starts over with the new choice.
   /* How to sort: a first layer and an optional second one. Changing it after a sort starts over. */
-  const LAYER_LABEL = { year: "Year", month: "Month", city: "City" };
+  const LAYER_LABEL = { year: "Year", month: "Month", country: "Country" };
   function setLayers(a, b) {
     if (state.phase === "sorting") return;
     if (b && !secondOptions(a).includes(b)) b = "";
@@ -826,10 +828,10 @@
       const lines = [];
       if (!allTime()) lines.push(`${fmt(n)} of ${fmt(total)} ${rangeText()}`);
       if (!n) lines.push("Pick another time");
-      else if (hasCity()) {
+      else if (hasCountry()) {
         const placed = picked.filter(f => f.place);
-        const cities = new Set(placed.map(f => f.place)).size;
-        lines.push(`${count(cities, "city", "cities")} found`, `${fmt(placed.length)} with a location`);
+        const countries = new Set(placed.map(f => countryOf(f.place))).size;
+        lines.push(`${count(countries, "country", "countries")} found`, `${fmt(placed.length)} with a location`);
       } else {
         lines.push(`${count(years, "year", "years")} found`);
         if (allTime()) lines.push(`${fmt(fromCamera)} with the camera's own date`);
@@ -889,7 +891,7 @@
   }
 
   // Shared with flow.js (steps 3 and 4) and samples.js
-  window.GalleryApp = { state, chosen, specialOf, rangeText, allTime, resetSort, render, toast, status, supportsPicker, inFrame, fmt, count, subLine, LAYER_WORDS, UNKNOWN_CITY };
+  window.GalleryApp = { state, chosen, specialOf, rangeText, allTime, resetSort, render, toast, status, supportsPicker, inFrame, fmt, count, subLine, LAYER_WORDS, UNKNOWN_COUNTRY };
 
   buildPlaceholders();
   render();
