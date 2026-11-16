@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gallery Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@200;300;400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand"><span class="logo" aria-hidden="true"></span>Gallery Organizer</div>
+      <div class="top-actions">
+        <div class="status" id="status" data-s="idle" role="status"><span class="dot"></span><span id="statusText">Ready</span></div>
+        <div class="source">
+          <button class="source-btn" type="button" id="sourceBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="sourceMenu">
+            <span id="sourceLabel">Add photos</span><span class="chev" aria-hidden="true"></span>
+          </button>
+          <div class="menu" id="sourceMenu" role="menu" hidden>
+            <ul class="sources" id="sources" aria-label="Added"></ul>
+            <button type="button" role="menuitem" data-add="photos"><span><b>Choose photos</b><small>One or many photos and videos</small></span></button>
+            <button type="button" role="menuitem" data-add="folder"><span><b>Choose a folder</b><small>Everything inside, subfolders too</small></span></button>
+            <p class="menu-note">Nothing is uploaded. You can also drop photos and folders anywhere on this page.</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero" aria-label="Summary">
+      <div class="total">
+        <span class="total-n zero" id="stTotal">0</span>
+        <span class="total-k">total</span>
+      </div>
+      <dl class="mini">
+        <div><dt>Photos</dt><dd class="zero" id="stPhotos">0</dd></div>
+        <div><dt>Videos</dt><dd class="zero" id="stVideos">0</dd></div>
+        <div><dt>Folders</dt><dd class="zero" id="stFolders">0</dd></div>
+      </dl>
+      <div class="hero-end">
+        <div class="story">
+          <p class="step" id="stepLine">Step 1 of 4 · Add photos</p>
+          <h1 class="headline" id="headline" aria-live="polite">My photos are <em class="mark">everywhere.</em></h1>
+        </div>
+        <div class="layers" role="group" aria-label="Which photos and how to sort" id="sortBy">
+          <label class="pickl"><span>Photos from</span><span class="sel"><select id="range">
+            <option value="all">All time</option><option value="year">This year</option><option value="12m">Last 12 months</option><option value="3y">Last 3 years</option><option value="pick">Pick dates…</option>
+          </select><span class="chev" aria-hidden="true"></span></span></label>
+          <span class="dates" id="dates" hidden><input type="date" id="dateFrom" aria-label="From date"><span aria-hidden="true">to</span><input type="date" id="dateTo" aria-label="To date"></span>
+          <label class="pickl"><span>Sort by</span><span class="sel"><select id="layer1">
+            <option value="year">Year</option><option value="month">Month</option><option value="city">City</option>
+          </select><span class="chev" aria-hidden="true"></span></span></label>
+          <label class="pickl"><span>then</span><span class="sel"><select id="layer2">
+            <option value="">Nothing</option>
+          </select><span class="chev" aria-hidden="true"></span></span></label>
+        </div>
+        <button class="sort-btn" type="button" id="sortBtn" disabled><span id="sortLabel">Sort by year</span></button>
+      </div>
+    </section>
+
+    <p class="notice" id="browserNotice" hidden></p>
+
+    <main class="stage" id="stage">
+      <div class="col left" id="colLeft" aria-label="Folders"></div>
+      <div class="center">
+        <div class="orb" id="orb" aria-label="Your photos">
+          <button class="orb-empty" type="button" id="orbEmpty">
+            <span class="plus" aria-hidden="true"></span>
+            <span>Add photos</span>
+          </button>
+        </div>
+        <div class="cpanel" id="cpanel" hidden></div>
+        <p class="caption" id="caption" aria-live="polite">Pick photos or folders from anywhere on your computer.</p>
+        <button class="demo-btn" type="button" id="demoBtn">or try with sample photos</button>
+        <button class="link" type="button" id="againBtn" hidden>Sort again</button>
+        <div class="scanctl" id="scanCtl" hidden>
+          <button class="link" type="button" id="pauseBtn">Pause</button>
+          <button class="link" type="button" id="stopBtn">Stop here</button>
+        </div>
+        <div class="progress" id="progress" hidden><i id="progressBar"></i></div>
+      </div>
+      <div class="col right" id="colRight" aria-label="Folders"></div>
+    </main>
+
+    <p class="foot">Runs only on this computer. Nothing is uploaded and nothing in your folders is changed.</p>
+  </div>
+
+  <div class="dropzone" id="dropzone" hidden><div>Drop to add</div></div>
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="sheet-head">
+        <h2 id="sheetTitle">Duplicates</h2>
+        <p>Tick every photo you want in the new library. You can keep more than one. At least one of each stays.</p>
+        <div class="sheet-bulk"><button class="link" type="button" id="bestOnlyBtn">Best only, everywhere</button><button class="link" type="button" id="keepAllBtn">Keep all copies</button></div>
+      </div>
+      <div class="sheet-grid" id="sheetGrid"></div>
+      <div class="sheet-foot"><button class="sort-btn" type="button" id="sheetDone">Done</button></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <input type="file" id="fallbackPicker" webkitdirectory multiple hidden>
+  <input type="file" id="photoPicker" multiple hidden accept="image/*,video/*,.heic,.heif,.dng,.cr2,.cr3,.nef,.arw,.raf,.orf,.rw2,.mov,.mp4,.m4v,.3gp,.mkv,.avi,.mts">
+
+  <script src="vendor/exifr.lite.umd.js"></script>
+  <script src="scan.js"></script>
+  <script src="pool.js"></script>
+  <script src="data/places.js"></script>
+  <script src="places.js"></script>
+  <script src="meta.js"></script>
+  <script src="app.js"></script>
+  <script src="dupes.js"></script>
+  <script src="flow.js"></script>
+  <script src="samples.js"></script>
+</body>
+</html>
