@@ -87,7 +87,7 @@
     if (s === "none") {
       step("Step 3 of 4 · Duplicates");
       button("Check duplicates");
-      caption("Next: find duplicates, so nothing is copied twice.");
+      caption("");
     } else if (s === "checking") {
       step("Step 3 of 4 · Duplicates");
       button("Checking…", false);

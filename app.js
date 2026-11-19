@@ -719,7 +719,7 @@
     const badge = document.createElement("div");
     badge.className = "done-badge";
     badge.innerHTML = `<svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="49.5" pathLength="1" transform="rotate(-90 50 50)"/></svg><span class="check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6.5" pathLength="1"/></svg></span><b>All sorted</b><span></span>`;
-    badge.lastElementChild.textContent = `${count(total, "item", "items")} in ${count(folders.length, "folder", "folders")}`;
+    badge.lastElementChild.textContent = `${count(total, "item", "items")} in ${count(state.targets, "folder", "folders")}`;
     $("orb").appendChild(badge);
     $("progress").hidden = true;
     render();
@@ -816,6 +816,10 @@
     $("stepLine").textContent = state.phase === "empty" ? "Step 1 of 4 · Add photos" : state.phase === "reading" ? (state.paused && state.roots.some(r => r.scanning) ? "Step 1 of 4 · Paused" : "Step 1 of 4 · Reading photos") : "Step 2 of 4 · Sort";
     $("sortLabel").textContent = state.phase === "done" ? "Sort again" : `Sort by ${layersText()}`;
     renderLayers();
+    // Once sorted, the choices become a plain sentence: they were used, so they can't be changed here (Sort again can).
+    const sorted = state.phase === "sorting" || state.phase === "done";
+    $("sortBy").hidden = sorted; $("sortedBy").hidden = !sorted;
+    if (sorted) $("sortedBy").textContent = `Photos ${rangeText()}, sorted by ${state.layers.join(", then ")}.`;
 
     const H = (a, b) => `${a} <em class="mark">${b}</em>`;
     const pickedVideos = picked.some(f => f.kind === "video");
