@@ -100,7 +100,7 @@
       button("Create folders");
       A().status("ready", "Ready to create");
       const extra = flow.groups.reduce((t, g) => t + Math.max(0, g.members.filter(kept).length - 1), 0);
-      if (n) headline(count(n, "duplicate", "duplicates"), "won't be copied.");
+      if (n) headline(`${count(flow.groups.length, "photo", "photos")} with copies,`, "keeping what's selected.");
       else if (flow.groups.length) headline("Keeping", "every copy.");
       else headline("No duplicates.", "Every photo is unique.");
       caption(n ? `${size(copiesSetAside().reduce((t, c) => t + c.size, 0))} you won't copy twice${extra ? ` · keeping ${count(extra, "extra copy", "extra copies")}` : ""}`
@@ -170,6 +170,11 @@
     if (copies.length) {
       const card = flow.dupCard = document.createElement("div");
       card.className = "fcard live dupcard";
+      card.setAttribute("role", "button"); card.tabIndex = 0;
+      card.setAttribute("aria-label", "Review duplicates");
+      const review = () => { if (flow.stage === "checked") openSheet(); };
+      card.addEventListener("click", review);
+      card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); review(); } });
       card.innerHTML = `<div class="f-head"><span class="f-name">Duplicates</span><span class="f-count">0</span></div><div class="slots">${'<i class="slot"></i>'.repeat(6)}</div><p class="f-note">Not copied</p>`;
       $("colRight").appendChild(card);
       const slots = [...card.querySelectorAll(".slot")], countEl = card.querySelector(".f-count");
@@ -196,6 +201,8 @@
     }
     $("progress").hidden = true;
     flow.stage = "checked";
+    // The Duplicates card pops once, so it's clear you can open it and look
+    if (flow.dupCard && !reduceMotion) flow.dupCard.animate([{ transform: "scale(1)" }, { transform: "scale(1.05)", offset: .4 }, { transform: "scale(1)" }], { duration: 450, easing: "ease-out" });
     updateCounts();
     showDuplicatePanel();
     render();
@@ -210,10 +217,10 @@
     const head = document.createElement("div");
     head.className = "cp-head";
     head.innerHTML = `<b></b><span></span>`;
-    head.querySelector("b").textContent = flow.groups.length ? count(n, "duplicate", "duplicates") : "No duplicates";
+    head.querySelector("b").textContent = flow.groups.length ? `${count(flow.groups.length, "photo", "photos")} with copies` : "No duplicates";
     head.querySelector("span").textContent = !flow.groups.length ? "Every photo appears only once."
       : noneKept || keptExtra ? [keptExtra && `You're keeping ${count(keptExtra, "extra copy", "extra copies")}.`, noneKept && `${count(noneKept, "photo", "photos")} left out completely.`, "The rest won't be copied."].filter(Boolean).join(" ")
-      : "The best copy of each photo is kept (the original name, then the biggest file). The others aren't copied.";
+      : `The best copy of each is selected (the original name, then the biggest file). Only selected copies go into your library, so ${count(n, "extra copy isn't", "extra copies aren't")} copied.`;
     p.appendChild(head);
     if (flow.groups.length) {
       const ul = document.createElement("ul");
