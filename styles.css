@@ -252,12 +252,9 @@ p, h1, dl, dd { margin: 0; }
 .sg-row { flex: none; display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); overflow-x: auto; }
 .sg-row .im { width: 128px; height: 96px; border-radius: 6px; background-size: cover; background-position: center; }
 .sg-row .mono { font: 400 11px/1.3 var(--f-mono); color: var(--ink-2); overflow-wrap: anywhere; }
-.sheet-bulk { display: flex; gap: 4px; margin-left: -8px; }
 .sg-group { flex: none; border-top: 1px solid var(--line); padding: 10px 0 4px; }
 .sg-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sg-title { font: 400 12px/1 var(--f-mono); color: var(--ink-2); }
-.sg-actions { display: flex; gap: 2px; }
-.sg-actions .link { font-size: 12.5px; }
 .sg-group .sg-row { border-top: 0; padding: 8px 0 6px; }
 .member { flex: none; width: 128px; display: grid; gap: 6px; text-align: left; border: 0; background: transparent; padding: 0; cursor: pointer; }
 .member .im { position: relative; opacity: .4; transition: opacity .2s, box-shadow .2s; }
@@ -265,8 +262,7 @@ p, h1, dl, dd { margin: 0; }
 .member .tick { position: absolute; right: 6px; top: 6px; width: 20px; height: 20px; border-radius: 50%; background: color-mix(in srgb, var(--paper) 80%, transparent); border: 1.5px solid var(--ink-2); }
 .member.kept .tick { background: var(--ink); border-color: var(--ink); }
 .member.kept .tick::after { content: ""; position: absolute; left: 6px; top: 2.5px; width: 4px; height: 9px; border: solid var(--paper); border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.member .tag { font-size: 12.5px; font-weight: 500; color: var(--ink-2); }
-.member.kept .tag { color: var(--ink); }
+.member .best { font: 500 11px/1 var(--f-mono); color: var(--ink); }
 .sheet-foot { padding: 12px 22px 18px; display: flex; justify-content: flex-end; border-top: 1px solid var(--line); }
 @media (max-width: 1000px) { .story { justify-items: start; } }
 @media (max-width: 600px) { .sum { grid-template-columns: 1fr 1fr; } .cpanel { min-height: 0; } .done-badge > span:last-child { max-width: 14ch; text-wrap: balance; } }

@@ -25,7 +25,8 @@
 
   /* ---------- helpers ---------- */
   const state = () => A().state;
-  // In each duplicate group every photo is either kept (copied) or skipped. At least one stays kept.
+  // In each duplicate group every photo is either kept (copied) or skipped. The best copy starts kept;
+  // people can keep more, or none at all (then that photo isn't in the new library; the original stays put).
   const kept = r => !r.skip;
   const toCopy = () => A().chosen().filter(kept);   // only the photos in the chosen time range
   const folderOf = r => state().folders.find(f => f.key === r.folderKey);
@@ -90,7 +91,7 @@
       step("Step 3 of 4 · Duplicates · done");
       button("Create folders");
       A().status("ready", "Ready to create");
-      const extra = flow.groups.reduce((t, g) => t + g.members.filter(kept).length - 1, 0);
+      const extra = flow.groups.reduce((t, g) => t + Math.max(0, g.members.filter(kept).length - 1), 0);
       if (n) headline(count(n, "duplicate", "duplicates"), "set aside.");
       else if (flow.groups.length) headline("Keeping", "every copy.");
       else headline("No duplicates.", "Every photo is unique.");
@@ -193,7 +194,8 @@
 
   function showDuplicatePanel() {
     const n = copiesSetAside().length, count = A().count;
-    const keptExtra = flow.groups.reduce((t, g) => t + g.members.filter(kept).length - 1, 0);
+    const keptExtra = flow.groups.reduce((t, g) => t + Math.max(0, g.members.filter(kept).length - 1), 0);
+    const noneKept = flow.groups.filter(g => !g.members.some(kept)).length;
     const p = $("cpanel");
     p.innerHTML = "";
     const head = document.createElement("div");
@@ -201,7 +203,7 @@
     head.innerHTML = `<b></b><span></span>`;
     head.querySelector("b").textContent = flow.groups.length ? count(n, "duplicate", "duplicates") + " skipped" : "No duplicates";
     head.querySelector("span").textContent = !flow.groups.length ? "Every photo appears only once."
-      : keptExtra ? `You're keeping ${count(keptExtra, "extra copy", "extra copies")}. The rest won't be copied.`
+      : noneKept || keptExtra ? [keptExtra && `You're keeping ${count(keptExtra, "extra copy", "extra copies")}.`, noneKept && `${count(noneKept, "photo", "photos")} left out completely.`, "The rest won't be copied."].filter(Boolean).join(" ")
       : "We keep the best copy of each photo: the original name, then the biggest file.";
     p.appendChild(head);
     if (flow.groups.length) {
@@ -216,7 +218,7 @@
           e.style.backgroundImage = thumb(r);
           li.appendChild(e);
         });
-        const dn = document.createElement("span"); dn.className = "dn"; dn.textContent = firstKept(g).name; li.appendChild(dn);
+        const dn = document.createElement("span"); dn.className = "dn"; dn.textContent = (firstKept(g) || g.keep).name; li.appendChild(dn);
         ul.appendChild(li);
       });
       p.appendChild(ul);
@@ -229,25 +231,23 @@
     panel(true);
   }
 
-  /* Review sheet: tick every photo you want in the new library. At least one per group. */
+  /* Review sheet: the best copy of each photo starts selected. Tap any photo to select or unselect it; none is fine too. */
   function openSheet() {
     const grid = $("sheetGrid"), count = A().count;
     grid.innerHTML = "";
-    const rows = [];
     flow.groups.forEach(g => {
       const row = document.createElement("div");
       row.className = "sg-group";
-      row.innerHTML = `<div class="sg-head"><span class="sg-title"></span><span class="sg-actions"><button type="button" class="link" data-all>Keep all</button><button type="button" class="link" data-best>Best only</button></span></div><div class="sg-row"></div>`;
+      row.innerHTML = `<div class="sg-head"><span class="sg-title"></span></div><div class="sg-row"></div>`;
       const strip = row.querySelector(".sg-row");
       const buttons = g.members.map(r => {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "member";
-        b.innerHTML = `<div class="im"><span class="tick" aria-hidden="true"></span></div><span class="tag"></span><span class="mono"></span>`;
+        b.innerHTML = `<div class="im"><span class="tick" aria-hidden="true"></span></div>${r === g.keep ? '<span class="best">Best</span>' : ""}<span class="mono"></span>`;
         b.querySelector(".im").style.backgroundImage = thumb(r);
-        b.querySelector(".mono").textContent = r.path + (r === g.keep ? " · best copy" : "");
+        b.querySelector(".mono").textContent = r.path;
         b.addEventListener("click", () => {
-          if (kept(r) && g.members.filter(kept).length === 1) { A().toast("Keep at least one copy of each photo."); return; }
           r.skip = !r.skip;
           paint();
         });
@@ -257,25 +257,18 @@
       const paint = () => {
         for (const { r, b } of buttons) {
           b.classList.toggle("kept", kept(r));
-          b.querySelector(".tag").textContent = kept(r) ? "Keep" : "Skip";
           b.setAttribute("aria-pressed", String(kept(r)));
-          b.setAttribute("aria-label", `${kept(r) ? "Keeping" : "Skipping"} ${r.name}`);
+          b.setAttribute("aria-label", `${kept(r) ? "Selected" : "Not selected"}: ${r.path}${r === g.keep ? " (best)" : ""}`);
         }
         const k = g.members.filter(kept).length;
-        row.querySelector(".sg-title").textContent = `${count(g.members.length, "identical photo", "identical photos")} · keeping ${k}`;
+        row.querySelector(".sg-title").textContent = `${count(g.members.length, "identical photo", "identical photos")} · ${k ? "keeping " + k : "keeping none"}`;
       };
-      row.querySelector("[data-all]").addEventListener("click", () => { g.members.forEach(r => { r.skip = false; }); paint(); });
-      row.querySelector("[data-best]").addEventListener("click", () => { g.members.forEach(r => { r.skip = r !== g.keep; }); paint(); });
       paint();
-      rows.push(paint);
       grid.appendChild(row);
     });
-    flow.repaintSheet = () => rows.forEach(f => f());
     $("sheet").hidden = false;
     $("sheetDone").focus();
   }
-  $("keepAllBtn").addEventListener("click", () => { flow.groups.forEach(g => g.members.forEach(r => { r.skip = false; })); flow.repaintSheet && flow.repaintSheet(); });
-  $("bestOnlyBtn").addEventListener("click", () => { flow.groups.forEach(g => g.members.forEach(r => { r.skip = r !== g.keep; })); flow.repaintSheet && flow.repaintSheet(); });
   function closeSheet() {
     $("sheet").hidden = true;
     updateCounts();
@@ -451,7 +444,7 @@
       folder.card.el.classList.remove("copying");
       folder.card.el.classList.add("copied");
     }
-    log.notCopiedDuplicates = copiesSetAside().map(c => ({ from: c.path, sameAs: firstKept(c.dupGroup).path }));
+    log.notCopiedDuplicates = copiesSetAside().map(c => ({ from: c.path, sameAs: firstKept(c.dupGroup) ? firstKept(c.dupGroup).path : null }));
 
     let logWritten = false;
     if (library) {
