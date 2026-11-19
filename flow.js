@@ -69,6 +69,7 @@
     panel(false);
     $("sheet").hidden = true;
     $("againBtn").hidden = true;
+    $("reviewBtn").hidden = true;
     document.querySelectorAll(".fcard .cbar").forEach(n => n.remove());
     document.querySelectorAll(".fcard.copied, .fcard.copying").forEach(n => n.classList.remove("copied", "copying"));
   }
@@ -84,6 +85,8 @@
   function render() {
     const s = flow.stage, n = copiesSetAside().length, fmt = A().fmt, count = A().count;
     $("againBtn").hidden = !(s === "none" || s === "checked");
+    // Reviewing is optional: a second button beside the main one, only when there's something to review.
+    $("reviewBtn").hidden = !(s === "checked" && flow.groups.length);
     if (s === "none") {
       step("Step 3 of 4 · Duplicates");
       button("Check duplicates");
@@ -97,11 +100,11 @@
       button("Create folders");
       A().status("ready", "Ready to create");
       const extra = flow.groups.reduce((t, g) => t + Math.max(0, g.members.filter(kept).length - 1), 0);
-      if (n) headline(count(n, "duplicate", "duplicates"), "set aside.");
+      if (n) headline(count(n, "duplicate", "duplicates"), "won't be copied.");
       else if (flow.groups.length) headline("Keeping", "every copy.");
       else headline("No duplicates.", "Every photo is unique.");
       caption(n ? `${size(copiesSetAside().reduce((t, c) => t + c.size, 0))} you won't copy twice${extra ? ` · keeping ${count(extra, "extra copy", "extra copies")}` : ""}`
-        : flow.groups.length ? `${count(extra, "extra copy", "extra copies")} will be copied too.` : "Nothing to set aside.");
+        : flow.groups.length ? `${count(extra, "extra copy", "extra copies")} will be copied too.` : "Nothing left out.");
     } else if (s === "choosing") {
       step("Step 4 of 4 · Create");
       button(flow.dryRun ? "Run a preview" : "Create library", flow.dryRun || !!flow.dest);
@@ -122,6 +125,7 @@
   }
 
   $("againBtn").addEventListener("click", () => { A().resetSort(); A().render(); });
+  $("reviewBtn").addEventListener("click", () => openSheet());
 
   /* ---------- flights between cards ---------- */
   const rel = el => {
@@ -206,10 +210,10 @@
     const head = document.createElement("div");
     head.className = "cp-head";
     head.innerHTML = `<b></b><span></span>`;
-    head.querySelector("b").textContent = flow.groups.length ? count(n, "duplicate", "duplicates") + " skipped" : "No duplicates";
+    head.querySelector("b").textContent = flow.groups.length ? count(n, "duplicate", "duplicates") : "No duplicates";
     head.querySelector("span").textContent = !flow.groups.length ? "Every photo appears only once."
       : noneKept || keptExtra ? [keptExtra && `You're keeping ${count(keptExtra, "extra copy", "extra copies")}.`, noneKept && `${count(noneKept, "photo", "photos")} left out completely.`, "The rest won't be copied."].filter(Boolean).join(" ")
-      : "We keep the best copy of each photo: the original name, then the biggest file.";
+      : "The best copy of each photo is kept (the original name, then the biggest file). The others aren't copied.";
     p.appendChild(head);
     if (flow.groups.length) {
       const ul = document.createElement("ul");
@@ -219,7 +223,7 @@
         g.members.slice(0, 4).forEach(r => {
           const e = document.createElement("span");
           e.className = kept(r) ? "k" : "c";
-          e.title = kept(r) ? "Kept" : "Skipped";
+          e.title = kept(r) ? "Kept" : "Not copied";
           showThumb(e, r);
           li.appendChild(e);
         });
@@ -228,10 +232,6 @@
       });
       p.appendChild(ul);
       if (flow.groups.length > 4) { const m = document.createElement("p"); m.className = "more"; m.textContent = `and ${count(flow.groups.length - 4, "more group", "more groups")}`; p.appendChild(m); }
-      const b = document.createElement("button");
-      b.className = "link"; b.type = "button"; b.id = "reviewBtn"; b.textContent = "Review and choose";
-      b.addEventListener("click", openSheet);
-      p.appendChild(b);
     }
     panel(true);
   }

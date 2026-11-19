@@ -107,6 +107,8 @@ p, h1, dl, dd { margin: 0; }
 .sort-btn { flex: none; height: 44px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--btn); color: var(--btn-ink); font: 500 14.5px/1 var(--f-ui); cursor: pointer; transition: opacity .2s, transform .15s; }
 .sort-btn:hover:not(:disabled) { transform: translateY(-1px); }
 .sort-btn:active:not(:disabled) { transform: scale(.97); }
+.sort-btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line-2); }
+.sort-btn.ghost:hover { border-color: var(--ink); }
 .sort-btn:disabled { opacity: .18; cursor: default; }
 .notice { font: 400 12.5px/1.4 var(--f-mono); color: var(--ink-2); margin-top: -14px; }
 
