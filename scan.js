@@ -182,5 +182,76 @@
     return null;
   }
 
-  window.GalleryScan = { kindOf, canPreview, extOf, scanDirectory, scanEntry, fileRecord, fromFileList, relation, breathe };
+  /* Small thumbnails. The little pictures on screen (ball, folder cards, duplicates) use a small
+     JPEG (about 240 px) made once per photo, never the full-size photo: a 12-megapixel picture
+     needs about 48 MB of memory to show, which makes phones stall and draw only parts of photos.
+     Two are made at a time; a request is skipped when nobody still wants its picture (every wanted() false). */
+  const THUMB_PX = 240, THUMB_KEEP = 1500, THUMBS_AT_ONCE = 2;
+  const thumbs = new Map();            // file → { rec, p: Promise<url|null> }, oldest first
+  const thumbQueue = [];
+  let thumbsBusy = 0;
+
+  async function shrink(file) {
+    let src, url = null;
+    try {
+      try { src = await createImageBitmap(file, { resizeWidth: THUMB_PX, resizeQuality: "medium" }); }
+      catch (e) {
+        url = URL.createObjectURL(file);
+        src = new Image();
+        src.src = url;
+        await src.decode();
+      }
+      const w = src.width, h = src.height, k = Math.min(1, THUMB_PX / Math.min(w, h));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+      c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+      const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.82));
+      c.width = c.height = 0;
+      return blob ? URL.createObjectURL(blob) : null;
+    } catch (e) {
+      return null;
+    } finally {
+      if (src && src.close) src.close();
+      if (url) URL.revokeObjectURL(url);
+    }
+  }
+
+  function pumpThumbs() {
+    while (thumbsBusy < THUMBS_AT_ONCE && thumbQueue.length) {
+      const job = thumbQueue.shift();
+      if (!job.wants.some(w => !w || w())) { thumbs.delete(job.file); job.done(null); continue; }
+      thumbsBusy++;
+      const entry = thumbs.get(job.file);
+      if (entry) entry.job = null;      // started: no more wants to collect
+      shrink(job.file).then(u => {
+        thumbsBusy--;
+        job.rec.thumbUrl = u;
+        job.done(u);
+        pumpThumbs();
+      });
+    }
+  }
+
+  /** Promise of a small picture URL for a photo record (null for videos and formats the browser can't show). */
+  function thumb(rec, wanted) {
+    if (rec.thumbUrl) return Promise.resolve(rec.thumbUrl);
+    if (rec.kind !== "photo" || !canPreview(rec.name)) return Promise.resolve(null);
+    let entry = thumbs.get(rec.file);
+    if (entry) { if (entry.job) entry.job.wants.push(wanted); }
+    else {
+      const job = { rec, file: rec.file, wants: [wanted] };
+      entry = { rec, job, p: new Promise(done => { job.done = done; thumbQueue.push(job); }) };
+      thumbs.set(rec.file, entry);
+      // keep memory bounded: forget the oldest small pictures past THUMB_KEEP
+      while (thumbs.size > THUMB_KEEP) {
+        const [f, old] = thumbs.entries().next().value;
+        thumbs.delete(f);
+        old.p.then(u => { if (u) { URL.revokeObjectURL(u); if (old.rec.thumbUrl === u) old.rec.thumbUrl = null; } });
+      }
+      setTimeout(pumpThumbs);   // after the caller has put its picture on the page (wanted() checks that)
+    }
+    return entry.p;
+  }
+
+  window.GalleryScan = { kindOf, canPreview, extOf, scanDirectory, scanEntry, fileRecord, fromFileList, relation, breathe, thumb };
 })();

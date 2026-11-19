@@ -9,7 +9,7 @@
   const $ = id => document.getElementById(id);
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const BALL_MAX = 96;          // photos shown in the ball
+  const BALL_MAX = matchMedia("(max-width: 600px)").matches ? 48 : 96;   // photos shown in the ball (fewer on phones: lighter to draw)
   const CARD_SLOTS = 12;        // folder places around the ball
   const SOURCE_COLORS = ["#E9A23B", "#3B8FE9", "#E9573B", "#2FB57C", "#9B5DE5", "#E93B8F", "#3BC4E9", "#8A6E4B"];
   const YEAR_COLORS = ["#E9573B", "#E9A23B", "#2FB57C", "#3B8FE9", "#9B5DE5", "#E93B8F", "#3BC4E9", "#C9822B", "#5E9E3B", "#5B6EE9", "#B5483B", "#8A6E4B"];
@@ -129,7 +129,18 @@
     if (repeated) notes.push(`${count(repeated, "was", "were")} already added`);
     if (notes.length) toast(`Added ${count(added, "item", "items")}. ${notes.join(", ")}.`);
   }
-  $("photoPicker").addEventListener("change", e => { addLooseFiles(e.target.files); e.target.value = ""; });
+  $("photoPicker").addEventListener("change", e => { picking = false; addLooseFiles(e.target.files); e.target.value = ""; });
+  // On phones the system copies (and converts) every picked photo before the page gets them, which can
+  // take a while. Say so as soon as the picker closes, so the page never looks frozen.
+  let picking = false;
+  $("photoPicker").addEventListener("click", () => { picking = true; });
+  $("photoPicker").addEventListener("cancel", () => { picking = false; render(); });
+  const pickerClosed = () => {
+    if (!picking || document.hidden) return;
+    setTimeout(() => { if (picking) { caption("Getting your photos…"); status("run", "Getting photos"); } }, 300);
+  };
+  window.addEventListener("focus", pickerClosed);
+  document.addEventListener("visibilitychange", pickerClosed);
 
   /* Folders */
   async function pickFolder() {
@@ -250,10 +261,13 @@
     let seen = 0;              // photos offered to the ball, for fair sampling
 
     function thumb(el, rec) {
+      el._rec = null;
       if (rec.kind === "photo" && S.canPreview(rec.name)) {
-        const url = URL.createObjectURL(rec.file);
-        el.style.backgroundImage = `url("${url}")`;
-        return url;
+        // a small picture, made in the background; the tile shows plain paper until it's ready
+        el._rec = rec;
+        el.style.backgroundImage = rec.thumbUrl ? `url("${rec.thumbUrl}")` : "";
+        if (!rec.thumbUrl) S.thumb(rec, () => el._rec === rec && el.isConnected).then(u => { if (u && el._rec === rec) el.style.backgroundImage = `url("${u}")`; });
+        return null;
       }
       let h = 0;
       for (const c of rec.name) h = (h * 31 + c.charCodeAt(0)) % 360;

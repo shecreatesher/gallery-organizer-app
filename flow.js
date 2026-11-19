@@ -32,11 +32,16 @@
   const folderOf = r => state().folders.find(f => f.key === r.folderKey);
   const copiesSetAside = () => flow.groups.flatMap(g => g.members).filter(r => r.skip);
   const firstKept = g => g.members.find(kept);
-  const urls = new Map();
+  // Small pictures (see GalleryScan.thumb). thumb() gives what's ready now; showThumb() fills it in when ready.
   const thumb = rec => {
     if (rec.kind !== "photo" || !window.GalleryScan.canPreview(rec.name)) return "linear-gradient(160deg,#8d8d8d,#3c3c3c)";
-    if (!urls.has(rec)) urls.set(rec, URL.createObjectURL(rec.file));
-    return `url("${urls.get(rec)}")`;
+    if (rec.thumbUrl) return `url("${rec.thumbUrl}")`;
+    window.GalleryScan.thumb(rec);
+    return "";
+  };
+  const showThumb = (el, rec) => {
+    el.style.backgroundImage = thumb(rec);
+    if (!rec.thumbUrl) window.GalleryScan.thumb(rec, () => el.isConnected).then(u => { if (u) el.style.backgroundImage = `url("${u}")`; });
   };
   const step = t => { $("stepLine").textContent = t; };
   const button = (label, enabled = true) => { $("sortLabel").textContent = label; $("sortBtn").disabled = !enabled; };
@@ -165,7 +170,7 @@
       $("colRight").appendChild(card);
       const slots = [...card.querySelectorAll(".slot")], countEl = card.querySelector(".f-count");
       // Load the pictures first, so no flying copy is ever blank
-      await Promise.all(copies.slice(0, 40).map(c => new Promise(res => { const bg = thumb(c); if (!bg.startsWith("url")) return res(); const im = new Image(); im.onload = im.onerror = res; im.src = urls.get(c); })));
+      await Promise.all(copies.slice(0, 40).map(c => window.GalleryScan.thumb(c)));
       let n = 0;
       const flights = [];
       const shown = copies.slice(0, 40);      // animate up to 40, count all
@@ -215,7 +220,7 @@
           const e = document.createElement("span");
           e.className = kept(r) ? "k" : "c";
           e.title = kept(r) ? "Kept" : "Skipped";
-          e.style.backgroundImage = thumb(r);
+          showThumb(e, r);
           li.appendChild(e);
         });
         const dn = document.createElement("span"); dn.className = "dn"; dn.textContent = (firstKept(g) || g.keep).name; li.appendChild(dn);
@@ -245,7 +250,7 @@
         b.type = "button";
         b.className = "member";
         b.innerHTML = `<div class="im"><span class="tick" aria-hidden="true"></span></div>${r === g.keep ? '<span class="best">Best</span>' : ""}<span class="mono"></span>`;
-        b.querySelector(".im").style.backgroundImage = thumb(r);
+        showThumb(b.querySelector(".im"), r);
         b.querySelector(".mono").textContent = r.path;
         b.addEventListener("click", () => {
           r.skip = !r.skip;
