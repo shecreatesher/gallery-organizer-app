@@ -299,7 +299,7 @@
     $("cpanel").innerHTML = `
       <div class="cp-head"><b>New library</b><span>A new folder named “${LIBRARY_NAME}”, with ${layoutText()}.</span></div>
       ${flow.dryRun
-        ? `<p class="dest dest-note">This version can't write files, so this runs as a preview. To really create the folders, open <span class="mono">index.html</span> in Chrome or Edge on your computer.</p>`
+        ? `<p class="dest dest-note">${A().inFrame ? `This version can't write files, so this runs as a preview. To really create the folders, open <span class="mono">index.html</span> in Chrome or Edge on your computer.` : "Designed for computers. Open it on a laptop or desktop to create your library."}</p>`
         : `<button class="dest" type="button" id="destBtn"><span class="mono"></span><b></b><span class="chg"></span></button>`}
       <dl class="sum">
         <div><dt>Folders</dt><dd>${fmt(state().targets)}</dd></div>

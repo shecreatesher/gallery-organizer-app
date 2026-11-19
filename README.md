@@ -8,7 +8,7 @@ Works in **Chrome** or **Edge** on a computer. Other browsers can look but can't
 
 ## How to use it
 
-1. **Add photos** (top right): choose photos or a folder, or drag them in. Or try the sample photos.
+1. **Add photos** (top right): choose photos or a folder, or drag them in. Or click *See an example*.
 2. Pick **Photos from** and **Sort by** (Year, Month or Country), then **Sort**.
 3. **Check duplicates**: exact copies are set aside and won't be copied.
 4. **Create folders** → choose where → **Create library**. Chrome asks you to allow the folder you picked.

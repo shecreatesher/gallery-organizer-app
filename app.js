@@ -30,7 +30,7 @@
   const inFrame = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
   const supportsPicker = typeof window.showDirectoryPicker === "function" && !inFrame;
   if (inFrame) showNotice("Online preview: your photos are read by your browser only. If Chrome asks to “Upload”, that only lets this page read them.");
-  else if (!supportsPicker) showNotice("This browser can sort and preview. To create the new folders later, use Chrome or Edge.");
+  else if (!supportsPicker) { $("foot").textContent = "Designed for computers. Private by design: your photos never leave this device."; $("foot").classList.add("strong"); }
 
   let nextId = 1;
   const fmt = n => n.toLocaleString();
@@ -810,7 +810,7 @@
       : `${count(state.phase === "ready" || state.phase === "done" ? n : total, "photo", "photos")},`;
     if (state.phase === "empty") {
       $("headline").innerHTML = H("My photos are", "everywhere.");
-      caption("Pick photos or folders from anywhere on your computer.");
+      caption("");
       status("idle", "Ready");
     } else if (state.phase === "reading") {
       $("headline").innerHTML = H(nPhotos, "zero folders.");
