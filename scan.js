@@ -185,8 +185,35 @@
   /* Small thumbnails. The little pictures on screen (ball, folder cards, duplicates) use a small
      JPEG (about 240 px) made once per photo, never the full-size photo: a 12-megapixel picture
      needs about 48 MB of memory to show, which makes phones stall and draw only parts of photos.
-     Two are made at a time; a request is skipped when nobody still wants its picture (every wanted() false). */
-  const THUMB_PX = 240, THUMB_KEEP = 1500, THUMBS_AT_ONCE = 2;
+     Fastest first: most camera and phone JPEGs carry their own small preview (about 160 px) near the start
+     of the file, read in a few milliseconds without opening the photo. Otherwise the photo is shrunk.
+     Two are made at a time on phones, four on computers; a request is skipped when nobody still wants its picture. */
+  const THUMB_PX = 200, THUMB_KEEP = 1500, THUMBS_AT_ONCE = matchMedia("(max-width: 600px)").matches ? 2 : 4;
+
+  // The preview stored inside the photo (EXIF), turned the right way up. null when there is none.
+  async function embedded(file) {
+    if (!window.exifr || !/\.jpe?g$/i.test(file.name || "")) return null;
+    try {
+      const [data, turn] = await Promise.all([window.exifr.thumbnail(file), window.exifr.orientation(file).catch(() => 1)]);
+      if (!data || data.length < 500) return null;
+      const blob = new Blob([data], { type: "image/jpeg" });
+      if (!turn || turn === 1 || turn === 2) return URL.createObjectURL(blob);
+      // 3 = upside down, 6 = turned right, 8 = turned left (4, 5, 7 are the mirrored versions)
+      const deg = { 3: 180, 4: 180, 5: 90, 6: 90, 7: 270, 8: 270 }[turn] || 0;
+      const img = await createImageBitmap(blob);
+      const side = deg % 180 !== 0, c = document.createElement("canvas");
+      c.width = side ? img.height : img.width; c.height = side ? img.width : img.height;
+      const g = c.getContext("2d");
+      g.translate(c.width / 2, c.height / 2); g.rotate(deg * Math.PI / 180);
+      g.drawImage(img, -img.width / 2, -img.height / 2);
+      img.close();
+      const out = await new Promise(res => c.toBlob(res, "image/jpeg", 0.85));
+      c.width = c.height = 0;
+      return out ? URL.createObjectURL(out) : null;
+    } catch (e) {
+      return null;
+    }
+  }
   const thumbs = new Map();            // file → { rec, p: Promise<url|null> }, oldest first
   const thumbQueue = [];
   let thumbsBusy = 0;
@@ -223,7 +250,7 @@
       thumbsBusy++;
       const entry = thumbs.get(job.file);
       if (entry) entry.job = null;      // started: no more wants to collect
-      shrink(job.file).then(u => {
+      embedded(job.file).then(u => u || shrink(job.file)).then(u => {
         thumbsBusy--;
         job.rec.thumbUrl = u;
         job.done(u);
