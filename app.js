@@ -613,8 +613,12 @@
     const c = folder.card;
     const slot = c.slots[Math.min(c.shown, c.slots.length - 1)];
     slot.style.backgroundImage = tile.el.style.backgroundImage;
+    // The photo flew before its little picture was ready: load it into the spot now
+    if (!slot.style.backgroundImage && tile.rec.kind === "photo") window.GalleryScan.thumb(tile.rec, () => slot.isConnected)
+      .then(u => { if (u && slot.isConnected && !slot.style.backgroundImage) slot.style.backgroundImage = `url("${u}")`; });
     slot.classList.remove("filled"); void slot.offsetWidth; slot.classList.add("filled");
     c.shown++; c.landed++;
+    (c.recs || (c.recs = new Set())).add(tile.rec);
     c.el.classList.add("hit");
     setTimeout(() => c.el.classList.remove("hit"), 170);
     if (!reduceMotion) c.el.animate([{ transform: "translateY(0)" }, { transform: "translateY(1.5px)", offset: .4 }, { transform: "translateY(0)" }], { duration: 300, easing: "ease-out" });
@@ -657,6 +661,29 @@
       const anim = fl.animate(frames, { duration: spotlight ? 2000 : 650, easing: spotlight ? "linear" : "cubic-bezier(.45,0,.2,1)", fill: "forwards" });
       anim.onfinish = () => { fl.remove(); landOn(folder, tile); resolve(); };
     });
+  }
+
+  /* After the flights: only up to 96 photos fly, so with thousands of photos a small year may get just one.
+     Fill each card's empty spots with other photos from that folder, spread across it, fading in quietly. */
+  function fillCards(folders, run) {
+    const S = window.GalleryScan;
+    for (const f of folders) {
+      const c = f.card, have = c.recs || new Set();
+      const pool = f.files.filter(r => r.kind === "photo" && !have.has(r) && S.canPreview(r.name));
+      const empty = c.slots.slice(Math.min(c.shown, c.slots.length)).slice(0, pool.length);   // never the same photo twice
+      if (!empty.length) continue;
+      const step = pool.length / empty.length;
+      empty.forEach((slot, i) => {
+        const rec = pool[Math.floor(i * step)];
+        if (!rec) return;
+        S.thumb(rec, () => slot.isConnected).then(u => {
+          if (!u || run !== sortRun || !slot.isConnected || slot.style.backgroundImage) return;
+          slot.style.backgroundImage = `url("${u}")`;
+          slot.classList.add("fade");
+        });
+      });
+      c.shown = c.slots.length;
+    }
   }
 
   // Every folder should receive at least one flying photo, even a year with 2 photos out of 10,000.
@@ -714,6 +741,7 @@
     await Promise.all(pending);
     if (run !== sortRun) return;
     folders.forEach(f => rollNum(f.card.count, f.files.length));
+    fillCards(folders, run);
     state.phase = "done";
     // A quiet finish: the circle draws itself, the tick follows, then the folders answer one by one.
     const badge = document.createElement("div");

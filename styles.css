@@ -133,6 +133,8 @@ p, h1, dl, dd { margin: 0; }
 .slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
 .slot { aspect-ratio: 1; border-radius: 4px; background: var(--soft); background-size: cover; background-position: center; }
 .slot.filled { animation: land .38s cubic-bezier(.2,.8,.3,1); }
+.slot.fade { animation: fadeIn .5s ease-out; }
+@keyframes fadeIn { from { opacity: 0; } }
 @keyframes land { from { transform: scale(.6); } 55% { transform: scale(1.08); } }
 /* Rolling numbers: the plain number is for reading (and screen readers); the digits roll over it. */
 .rn-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
