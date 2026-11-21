@@ -179,7 +179,7 @@
       $("colRight").appendChild(card);
       const slots = [...card.querySelectorAll(".slot")], countEl = card.querySelector(".f-count");
       // Load the pictures first, so no flying copy is ever blank
-      await Promise.all(copies.slice(0, 40).map(c => window.GalleryScan.thumb(c)));
+      await Promise.race([Promise.all(copies.slice(0, 40).map(c => window.GalleryScan.thumb(c))), sleep(2000)]);   // don't wait long for slow videos
       let n = 0;
       const flights = [];
       const shown = copies.slice(0, 40);      // animate up to 40, count all

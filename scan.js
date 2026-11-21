@@ -190,8 +190,12 @@
      needs about 48 MB of memory to show, which makes phones stall and draw only parts of photos.
      Fastest first: most camera and phone JPEGs carry their own small preview (about 160 px) near the start
      of the file, read in a few milliseconds without opening the photo. Otherwise the photo is shrunk.
-     Two are made at a time on phones, four on computers; a request is skipped when nobody still wants its picture. */
-  const THUMB_PX = 200, THUMB_KEEP = 1500, THUMBS_AT_ONCE = matchMedia("(max-width: 600px)").matches ? 2 : 4;
+     Newest request first (the photos in the ball right now), two at a time on phones, six on computers;
+     a request is skipped when nobody still wants its picture. Videos wait in their own lane, one at a time,
+     only when no photo is waiting. */
+  const THUMB_PX = 160, THUMB_KEEP = 1500, THUMBS_AT_ONCE = matchMedia("(max-width: 600px)").matches ? 2 : 6;
+  const videoQueue = [];
+  let videoBusy = false;
 
   // The preview stored inside the photo (EXIF), turned the right way up. null when there is none.
   async function embedded(file) {
@@ -210,9 +214,9 @@
       g.translate(c.width / 2, c.height / 2); g.rotate(deg * Math.PI / 180);
       g.drawImage(img, -img.width / 2, -img.height / 2);
       img.close();
-      const out = await new Promise(res => c.toBlob(res, "image/jpeg", 0.85));
+      const out = c.toDataURL("image/jpeg", 0.8);
       c.width = c.height = 0;
-      return out ? URL.createObjectURL(out) : null;
+      return out;
     } catch (e) {
       return null;
     }
@@ -224,7 +228,7 @@
   async function shrink(file) {
     let src, url = null;
     try {
-      try { src = await createImageBitmap(file, { resizeWidth: THUMB_PX, resizeQuality: "medium" }); }
+      try { src = await createImageBitmap(file, { resizeWidth: THUMB_PX, resizeQuality: "low" }); }
       catch (e) {
         url = URL.createObjectURL(file);
         src = new Image();
@@ -235,9 +239,10 @@
       const c = document.createElement("canvas");
       c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
       c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
-      const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.82));
+      // toDataURL, not toBlob: Chrome queues toBlob calls one after another (about a second each when busy)
+      const out = c.toDataURL("image/jpeg", 0.8);
       c.width = c.height = 0;
-      return blob ? URL.createObjectURL(blob) : null;
+      return out;
     } catch (e) {
       return null;
     } finally {
@@ -252,7 +257,7 @@
       const url = URL.createObjectURL(file), v = document.createElement("video");
       let over = false;
       const finish = out => { if (over) return; over = true; clearTimeout(timer); v.removeAttribute("src"); v.load(); URL.revokeObjectURL(url); done(out); };
-      const timer = setTimeout(() => finish(null), 8000);
+      const timer = setTimeout(() => finish(null), 3000);
       v.muted = true; v.preload = "metadata"; v.playsInline = true;
       v.onerror = () => finish(null);
       v.onloadedmetadata = () => { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); };
@@ -263,22 +268,33 @@
           const k = Math.min(1, THUMB_PX / Math.min(w, h)), c = document.createElement("canvas");
           c.width = Math.round(w * k); c.height = Math.round(h * k);
           c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-          c.toBlob(b => { c.width = c.height = 0; finish(b ? URL.createObjectURL(b) : null); }, "image/jpeg", 0.8);
+          const out = c.toDataURL("image/jpeg", 0.8); c.width = c.height = 0; finish(out);
         } catch (e) { finish(null); }
       };
       v.src = url;
     });
   }
 
+  const stillWanted = job => job.wants.some(w => !w || w());
+  function started(job) { const entry = thumbs.get(job.file); if (entry) entry.job = null; }   // no more wants to collect
   function pumpThumbs() {
     while (thumbsBusy < THUMBS_AT_ONCE && thumbQueue.length) {
-      const job = thumbQueue.shift();
-      if (!job.wants.some(w => !w || w())) { thumbs.delete(job.file); job.done(null); continue; }
-      thumbsBusy++;
-      const entry = thumbs.get(job.file);
-      if (entry) entry.job = null;      // started: no more wants to collect
-      (job.rec.kind === "video" ? frame(job.file) : embedded(job.file).then(u => u || shrink(job.file))).then(u => {
+      const job = thumbQueue.pop();                     // newest first
+      if (!stillWanted(job)) { thumbs.delete(job.file); job.done(null); continue; }
+      thumbsBusy++; started(job);
+      embedded(job.file).then(u => u || shrink(job.file)).then(u => {
         thumbsBusy--;
+        job.rec.thumbUrl = u;
+        job.done(u);
+        pumpThumbs();
+      });
+    }
+    while (!videoBusy && !thumbQueue.length && videoQueue.length) {
+      const job = videoQueue.pop();
+      if (!stillWanted(job)) { thumbs.delete(job.file); job.done(null); continue; }
+      videoBusy = true; started(job);
+      frame(job.file).then(u => {
+        videoBusy = false;
         job.rec.thumbUrl = u;
         job.done(u);
         pumpThumbs();
@@ -294,7 +310,7 @@
     if (entry) { if (entry.job) entry.job.wants.push(wanted); }
     else {
       const job = { rec, file: rec.file, wants: [wanted] };
-      entry = { rec, job, p: new Promise(done => { job.done = done; thumbQueue.push(job); }) };
+      entry = { rec, job, p: new Promise(done => { job.done = done; (rec.kind === "video" ? videoQueue : thumbQueue).push(job); }) };
       thumbs.set(rec.file, entry);
       // keep memory bounded: forget the oldest small pictures past THUMB_KEEP
       while (thumbs.size > THUMB_KEEP) {
