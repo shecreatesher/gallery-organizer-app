@@ -45,6 +45,9 @@
   function canPreview(name) {
     return PREVIEW_EXT.has(extOf(name));
   }
+  // Videos Chrome can open, so a frame can be its little picture (HEIC photos can't be shown in Chrome).
+  const FRAME_EXT = new Set(["mp4", "mov", "m4v", "webm"]);
+  const canThumb = rec => rec.kind === "photo" ? canPreview(rec.name) : rec.kind === "video" && FRAME_EXT.has(extOf(rec.name));
 
   /**
    * Scan a directory handle depth-first.
@@ -243,6 +246,30 @@
     }
   }
 
+  // A frame from the start of a video, shrunk. null when Chrome can't play it (some codecs).
+  function frame(file) {
+    return new Promise(done => {
+      const url = URL.createObjectURL(file), v = document.createElement("video");
+      let over = false;
+      const finish = out => { if (over) return; over = true; clearTimeout(timer); v.removeAttribute("src"); v.load(); URL.revokeObjectURL(url); done(out); };
+      const timer = setTimeout(() => finish(null), 8000);
+      v.muted = true; v.preload = "metadata"; v.playsInline = true;
+      v.onerror = () => finish(null);
+      v.onloadedmetadata = () => { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); };
+      v.onseeked = () => {
+        try {
+          const w = v.videoWidth, h = v.videoHeight;
+          if (!w || !h) return finish(null);
+          const k = Math.min(1, THUMB_PX / Math.min(w, h)), c = document.createElement("canvas");
+          c.width = Math.round(w * k); c.height = Math.round(h * k);
+          c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+          c.toBlob(b => { c.width = c.height = 0; finish(b ? URL.createObjectURL(b) : null); }, "image/jpeg", 0.8);
+        } catch (e) { finish(null); }
+      };
+      v.src = url;
+    });
+  }
+
   function pumpThumbs() {
     while (thumbsBusy < THUMBS_AT_ONCE && thumbQueue.length) {
       const job = thumbQueue.shift();
@@ -250,7 +277,7 @@
       thumbsBusy++;
       const entry = thumbs.get(job.file);
       if (entry) entry.job = null;      // started: no more wants to collect
-      embedded(job.file).then(u => u || shrink(job.file)).then(u => {
+      (job.rec.kind === "video" ? frame(job.file) : embedded(job.file).then(u => u || shrink(job.file))).then(u => {
         thumbsBusy--;
         job.rec.thumbUrl = u;
         job.done(u);
@@ -262,7 +289,7 @@
   /** Promise of a small picture URL for a photo record (null for videos and formats the browser can't show). */
   function thumb(rec, wanted) {
     if (rec.thumbUrl) return Promise.resolve(rec.thumbUrl);
-    if (rec.kind !== "photo" || !canPreview(rec.name)) return Promise.resolve(null);
+    if (!canThumb(rec)) return Promise.resolve(null);
     let entry = thumbs.get(rec.file);
     if (entry) { if (entry.job) entry.job.wants.push(wanted); }
     else {
@@ -280,5 +307,5 @@
     return entry.p;
   }
 
-  window.GalleryScan = { kindOf, canPreview, extOf, scanDirectory, scanEntry, fileRecord, fromFileList, relation, breathe, thumb };
+  window.GalleryScan = { kindOf, canPreview, canThumb, extOf, scanDirectory, scanEntry, fileRecord, fromFileList, relation, breathe, thumb };
 })();

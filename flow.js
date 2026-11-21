@@ -34,7 +34,7 @@
   const firstKept = g => g.members.find(kept);
   // Small pictures (see GalleryScan.thumb). thumb() gives what's ready now; showThumb() fills it in when ready.
   const thumb = rec => {
-    if (rec.kind !== "photo" || !window.GalleryScan.canPreview(rec.name)) return "linear-gradient(160deg,#8d8d8d,#3c3c3c)";
+    if (!window.GalleryScan.canThumb(rec)) return "linear-gradient(160deg,#8d8d8d,#3c3c3c)";
     if (rec.thumbUrl) return `url("${rec.thumbUrl}")`;
     window.GalleryScan.thumb(rec);
     return "";

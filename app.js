@@ -262,11 +262,12 @@
 
     function thumb(el, rec) {
       el._rec = null;
-      if (rec.kind === "photo" && S.canPreview(rec.name)) {
-        // a small picture, made in the background; the tile shows plain paper until it's ready
+      if (S.canThumb(rec)) {
+        // a small picture (a frame for videos), made in the background; the tile shows plain paper until it's ready
         el._rec = rec;
         el.style.backgroundImage = rec.thumbUrl ? `url("${rec.thumbUrl}")` : "";
         if (!rec.thumbUrl) S.thumb(rec, () => el._rec === rec && el.isConnected).then(u => { if (u && el._rec === rec) el.style.backgroundImage = `url("${u}")`; });
+        if (rec.kind === "video") { const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "▶"; el.appendChild(lbl); }
         return null;
       }
       let h = 0;
@@ -613,8 +614,9 @@
     const c = folder.card;
     const slot = c.slots[Math.min(c.shown, c.slots.length - 1)];
     slot.style.backgroundImage = tile.el.style.backgroundImage;
+    slot.dataset.real = window.GalleryScan.canThumb(tile.rec) ? "1" : "";   // a real picture, not a colour square
     // The photo flew before its little picture was ready: load it into the spot now
-    if (!slot.style.backgroundImage && tile.rec.kind === "photo") window.GalleryScan.thumb(tile.rec, () => slot.isConnected)
+    if (!slot.style.backgroundImage && window.GalleryScan.canThumb(tile.rec)) window.GalleryScan.thumb(tile.rec, () => slot.isConnected)
       .then(u => { if (u && slot.isConnected && !slot.style.backgroundImage) slot.style.backgroundImage = `url("${u}")`; });
     slot.classList.remove("filled"); void slot.offsetWidth; slot.classList.add("filled");
     c.shown++; c.landed++;
@@ -669,16 +671,18 @@
     const S = window.GalleryScan;
     for (const f of folders) {
       const c = f.card, have = c.recs || new Set();
-      const pool = f.files.filter(r => r.kind === "photo" && !have.has(r) && S.canPreview(r.name));
-      const empty = c.slots.slice(Math.min(c.shown, c.slots.length)).slice(0, pool.length);   // never the same photo twice
+      // Real pictures replace empty spots and colour squares (photos Chrome can't show, like HEIC); photos first, then video frames
+      const photos = f.files.filter(r => r.kind === "photo" && !have.has(r) && S.canThumb(r));
+      const pool = photos.length >= 6 ? photos : photos.concat(f.files.filter(r => r.kind === "video" && !have.has(r) && S.canThumb(r)));
+      const empty = c.slots.filter(s => !s.dataset.real).slice(0, pool.length);   // never the same photo twice
       if (!empty.length) continue;
       const step = pool.length / empty.length;
       empty.forEach((slot, i) => {
         const rec = pool[Math.floor(i * step)];
         if (!rec) return;
         S.thumb(rec, () => slot.isConnected).then(u => {
-          if (!u || run !== sortRun || !slot.isConnected || slot.style.backgroundImage) return;
-          slot.style.backgroundImage = `url("${u}")`;
+          if (!u || run !== sortRun || !slot.isConnected || slot.dataset.real) return;
+          slot.style.backgroundImage = `url("${u}")`; slot.dataset.real = "1";
           slot.classList.add("fade");
         });
       });
