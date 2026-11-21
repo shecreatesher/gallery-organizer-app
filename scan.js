@@ -190,7 +190,7 @@
      needs about 48 MB of memory to show, which makes phones stall and draw only parts of photos.
      Fastest first: most camera and phone JPEGs carry their own small preview (about 160 px) near the start
      of the file, read in a few milliseconds without opening the photo. Otherwise the photo is shrunk.
-     Newest request first (the photos in the ball right now), two at a time on phones, six on computers;
+     First come, first served, two at a time on phones, six on computers;
      a request is skipped when nobody still wants its picture. Videos have their own lane, one at a time,
      so a slow video never holds up photos. */
   const THUMB_PX = 160, THUMB_KEEP = 1500, THUMBS_AT_ONCE = matchMedia("(max-width: 600px)").matches ? 2 : 6;
@@ -279,7 +279,7 @@
   function started(job) { const entry = thumbs.get(job.file); if (entry) entry.job = null; }   // no more wants to collect
   function pumpThumbs() {
     while (thumbsBusy < THUMBS_AT_ONCE && thumbQueue.length) {
-      const job = thumbQueue.pop();                     // newest first
+      const job = thumbQueue.shift();                   // first come, first served (newest-first starved the photos waiting to join the ball)
       if (!stillWanted(job)) { thumbs.delete(job.file); job.done(null); continue; }
       thumbsBusy++; started(job);
       embedded(job.file).then(u => u || shrink(job.file)).then(u => {

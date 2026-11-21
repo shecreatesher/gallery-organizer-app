@@ -321,27 +321,43 @@
       setTimeout(swap, 90);
     }
 
-    /* A photo joins the ball only once its little picture is ready, so the ball never shows an empty tile.
-       Photos Chrome can't show (HEIC, some videos) join at once as a colour square with their type. */
-    let gen = 0, pending = 0;
+    /* The ball shows only real pictures. A photo joins (or swaps in) once its little picture is ready, so there's
+       never an empty tile; photos Chrome can't show (HEIC, videos it can't open) stay out of the ball (they're
+       still counted, sorted and copied). Only if nothing at all can be shown do colour squares stand in. */
+    let gen = 0, pending = 0, swaps = 0, others = [], fallbackTimer = 0;
+    const SWAPS_WAITING = 6;   // while a big folder is read, only a few swaps wait at once, so photos joining the ball come first
     const settled = () => state.phase === "sorting" || state.phase === "done";
     function whenReady(rec, go, cancel) {
       const g = gen;
-      if (!S.canThumb(rec) || rec.thumbUrl || rec.noThumb) return go();
+      if (rec.thumbUrl) return go();
       S.thumb(rec, () => g === gen).then(u => {
         if (g !== gen || settled()) return cancel && cancel();
-        if (!u) rec.noThumb = true;     // couldn't be read: show it as a colour square instead
+        if (!u) { rec.noThumb = true; cancel && cancel(); return otherwise(rec); }   // couldn't be read: leave it out
         go();
       });
     }
 
+    // Photos that can't be shown: kept aside, used only if the ball would otherwise stay empty
+    function otherwise(rec) {
+      if (others.length < BALL_MAX) others.push(rec);
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(() => {
+        if (tiles.length || pending || settled()) return;
+        others.splice(0).forEach(r => { r.noThumb = true; place(r); });
+      }, 1500);
+    }
+
     function add(rec) {
+      if (!S.canThumb(rec) || rec.noThumb) return otherwise(rec);
       seen++;
       if (tiles.length + pending >= BALL_MAX) {
         // Keep the ball a fair random sample of everything added (reservoir sampling).
         // A swapped photo on the front side flips, so the ball keeps visibly filling.
         const j = Math.floor(Math.random() * seen);
-        if (j < BALL_MAX) whenReady(rec, () => { const t = tiles[j % Math.max(1, tiles.length)]; if (t) setRec(t, rec, t.depth > 0.55); });
+        if (j < BALL_MAX && swaps < SWAPS_WAITING) {
+          swaps++;
+          whenReady(rec, () => { swaps--; const t = tiles[j % Math.max(1, tiles.length)]; if (t) setRec(t, rec, t.depth > 0.55); }, () => { swaps--; });
+        }
         return;
       }
       pending++;
@@ -366,7 +382,7 @@
     }
 
     function clear() {
-      gen++; pending = 0;
+      gen++; pending = 0; swaps = 0; others = []; clearTimeout(fallbackTimer);
       tiles.concat(left).forEach(t => { t.el.remove(); if (t.url) URL.revokeObjectURL(t.url); });
       tiles = []; left = [];
       seen = 0;
@@ -719,7 +735,7 @@
       const donor = folders.reduce((a, b) => tilesOf.get(b.key).length > tilesOf.get(a.key).length ? b : a);
       if (tilesOf.get(donor.key).length < 2) break;
       const t = tilesOf.get(donor.key).pop();
-      Ball.setRec(t, f.files[0]);
+      Ball.setRec(t, f.files.find(r => window.GalleryScan.canThumb(r) && !r.noThumb) || f.files[0]);
       tilesOf.get(f.key).push(t);
     }
   }
