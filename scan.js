@@ -191,8 +191,8 @@
      Fastest first: most camera and phone JPEGs carry their own small preview (about 160 px) near the start
      of the file, read in a few milliseconds without opening the photo. Otherwise the photo is shrunk.
      Newest request first (the photos in the ball right now), two at a time on phones, six on computers;
-     a request is skipped when nobody still wants its picture. Videos wait in their own lane, one at a time,
-     only when no photo is waiting. */
+     a request is skipped when nobody still wants its picture. Videos have their own lane, one at a time,
+     so a slow video never holds up photos. */
   const THUMB_PX = 160, THUMB_KEEP = 1500, THUMBS_AT_ONCE = matchMedia("(max-width: 600px)").matches ? 2 : 6;
   const videoQueue = [];
   let videoBusy = false;
@@ -289,7 +289,7 @@
         pumpThumbs();
       });
     }
-    while (!videoBusy && !thumbQueue.length && videoQueue.length) {
+    while (!videoBusy && videoQueue.length) {
       const job = videoQueue.pop();
       if (!stillWanted(job)) { thumbs.delete(job.file); job.done(null); continue; }
       videoBusy = true; started(job);

@@ -262,7 +262,7 @@
 
     function thumb(el, rec) {
       el._rec = null;
-      if (S.canThumb(rec)) {
+      if (S.canThumb(rec) && !rec.noThumb) {
         // a small picture (a frame for videos), made in the background; the tile shows plain paper until it's ready
         el._rec = rec;
         el.style.backgroundImage = rec.thumbUrl ? `url("${rec.thumbUrl}")` : "";
@@ -321,15 +321,34 @@
       setTimeout(swap, 90);
     }
 
+    /* A photo joins the ball only once its little picture is ready, so the ball never shows an empty tile.
+       Photos Chrome can't show (HEIC, some videos) join at once as a colour square with their type. */
+    let gen = 0, pending = 0;
+    const settled = () => state.phase === "sorting" || state.phase === "done";
+    function whenReady(rec, go, cancel) {
+      const g = gen;
+      if (!S.canThumb(rec) || rec.thumbUrl || rec.noThumb) return go();
+      S.thumb(rec, () => g === gen).then(u => {
+        if (g !== gen || settled()) return cancel && cancel();
+        if (!u) rec.noThumb = true;     // couldn't be read: show it as a colour square instead
+        go();
+      });
+    }
+
     function add(rec) {
       seen++;
-      if (tiles.length >= BALL_MAX) {
+      if (tiles.length + pending >= BALL_MAX) {
         // Keep the ball a fair random sample of everything added (reservoir sampling).
         // A swapped photo on the front side flips, so the ball keeps visibly filling.
         const j = Math.floor(Math.random() * seen);
-        if (j < BALL_MAX) setRec(tiles[j], rec, tiles[j].depth > 0.55);
+        if (j < BALL_MAX) whenReady(rec, () => { const t = tiles[j % Math.max(1, tiles.length)]; if (t) setRec(t, rec, t.depth > 0.55); });
         return;
       }
+      pending++;
+      whenReady(rec, () => { pending--; place(rec); }, () => { pending--; });
+    }
+
+    function place(rec) {
       const el = document.createElement("div");
       el.className = "tile" + (rec.kind === "video" ? " vid" : "");
       const url = thumb(el, rec);
@@ -347,6 +366,7 @@
     }
 
     function clear() {
+      gen++; pending = 0;
       tiles.concat(left).forEach(t => { t.el.remove(); if (t.url) URL.revokeObjectURL(t.url); });
       tiles = []; left = [];
       seen = 0;
@@ -356,7 +376,7 @@
     function rebuild(files) {
       clear();
       files.forEach(add);
-      $("orbEmpty").hidden = tiles.length > 0;
+      $("orbEmpty").hidden = files.length > 0;
       draw();
     }
 
