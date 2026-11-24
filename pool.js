@@ -35,7 +35,7 @@
           const out = [];
           for (const it of items) out.push(await fingerprint(it.file).catch(() => null));
           postMessage({ id, out });
-        }
+        } else if (task === "ping") postMessage({ id });
       } catch (err) {
         postMessage({ id, error: String(err) });
       }
@@ -54,27 +54,38 @@
   let nextId = 1, turn = 0;
   workers.forEach(w => {
     w.onmessage = e => {
+      if (e.data.id === 0) { w.ok = true; return; }
       const job = pending.get(e.data.id);
       if (!job) return;
       pending.delete(e.data.id);
+      clearTimeout(job.timer);
       if (e.data.error) job.reject(new Error(e.data.error)); else job.resolve(e.data.out);
     };
-    w.onerror = () => {
-      // A broken worker: fail everything it had, so callers fall back to the page
-      for (const [id, job] of pending) { if (job.worker === w) { pending.delete(id); job.reject(new Error("worker failed")); } }
-    };
+    w.onerror = () => broken(w);
+    w.postMessage({ id: 0, task: "ping" });
   });
+  // A worker that hasn't said hello within 4 s never started (some pages block them): read on the page instead
+  setTimeout(() => workers.forEach(w => { if (!w.ok) broken(w); }), 4000);
+  // A broken worker (or one a page like the online preview never lets start): stop using it and fail
+  // everything it had, so callers fall back to reading on the page.
+  function broken(w) {
+    w.dead = true;
+    for (const [id, job] of pending) { if (job.worker === w) { pending.delete(id); clearTimeout(job.timer); job.reject(new Error("worker failed")); } }
+  }
 
   /** Run a task ("head" or "hash") on a batch of items in the next worker. Resolves with one result per item. */
   function run(task, items) {
-    if (!workers.length) return Promise.reject(new Error("no workers"));
-    const worker = workers[turn++ % workers.length];
+    const live = workers.filter(w => !w.dead);
+    if (!live.length) return Promise.reject(new Error("no workers"));
+    const worker = live[turn++ % live.length];
     const id = nextId++;
     return new Promise((resolve, reject) => {
-      pending.set(id, { resolve, reject, worker });
+      // Reading dates never takes long: no answer in 15 s means the worker is stuck, so give up on it
+      const timer = task === "head" ? setTimeout(() => { if (pending.has(id)) broken(worker); }, 15000) : 0;
+      pending.set(id, { resolve, reject, worker, timer });
       worker.postMessage({ id, task, items });
     });
   }
 
-  window.GalleryPool = { run, size: workers.length, get available() { return workers.length > 0; } };
+  window.GalleryPool = { run, size: workers.length, get available() { return workers.some(w => !w.dead); } };
 })();

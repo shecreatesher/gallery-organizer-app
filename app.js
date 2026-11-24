@@ -9,7 +9,7 @@
   const $ = id => document.getElementById(id);
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const BALL_MAX = matchMedia("(max-width: 600px)").matches ? 48 : 96;   // photos shown in the ball (fewer on phones: lighter to draw)
+  const BALL_MAX = matchMedia("(max-width: 600px)").matches ? 60 : 200;   // photos in the ball: colour squares while loading, pictures after (fewer on phones: lighter to draw)
   const CARD_SLOTS = 12;        // folder places around the ball
   const SOURCE_COLORS = ["#E9A23B", "#3B8FE9", "#E9573B", "#2FB57C", "#9B5DE5", "#E93B8F", "#3BC4E9", "#8A6E4B"];
   const YEAR_COLORS = ["#E9573B", "#E9A23B", "#2FB57C", "#3B8FE9", "#9B5DE5", "#E93B8F", "#3BC4E9", "#C9822B", "#5E9E3B", "#5B6EE9", "#B5483B", "#8A6E4B"];
@@ -260,25 +260,13 @@
     let dragging = false, lastX = 0, lastY = 0;
     let seen = 0;              // photos offered to the ball, for fair sampling
 
-    function thumb(el, rec) {
-      el._rec = null;
-      if (S.canThumb(rec) && !rec.noThumb) {
-        // a small picture (a frame for videos), made in the background; the tile shows plain paper until it's ready
-        el._rec = rec;
-        el.style.backgroundImage = rec.thumbUrl ? `url("${rec.thumbUrl}")` : "";
-        if (!rec.thumbUrl) S.thumb(rec, () => el._rec === rec && el.isConnected).then(u => { if (u && el._rec === rec) el.style.backgroundImage = `url("${u}")`; });
-        if (rec.kind === "video") { const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "▶"; el.appendChild(lbl); }
-        return null;
-      }
+    // A colourful square: what every tile shows while photos are found and dates read (no pictures are made then)
+    function colour(el, rec) {
       let h = 0;
       for (const c of rec.name) h = (h * 31 + c.charCodeAt(0)) % 360;
       el.style.backgroundImage = `linear-gradient(160deg, hsl(${h} 45% 58%), hsl(${(h + 40) % 360} 40% 30%))`;
-      const lbl = document.createElement("span");
-      lbl.className = "lbl";
-      lbl.textContent = rec.ext.toUpperCase();
-      el.appendChild(lbl);
-      return null;
     }
+    const showable = rec => S.canThumb(rec) && !rec.noThumb;
 
     // Even places on the sphere (a golden spiral). nearest: each photo takes the closest free place
     // instead of the place with its number, so the ball closes up gently when photos leave.
@@ -303,87 +291,102 @@
         }
       }
       // fewer photos → bigger photos, so a small pool still looks full
-      const ts = n <= 8 ? 24 : n >= 60 ? 15 : 24 - (n - 8) * (9 / 52);
+      const ts = n <= 8 ? 24 : n <= 60 ? 24 - (n - 8) * (9 / 52) : Math.max(9.5, 15 - (n - 60) * (5.5 / 140));
       orb.style.setProperty("--ts", ts.toFixed(1) + "%");
     }
 
     // Put a different photo on an existing tile. flip: a quick squeeze, so a new photo is seen arriving.
     function setRec(t, rec, flip) {
       const swap = () => {
-        if (t.url) URL.revokeObjectURL(t.url);
         t.el.textContent = "";
-        t.el.className = "tile" + (rec.kind === "video" ? " vid" : "");
-        t.rec = rec;
-        t.url = thumb(t.el, rec);
+        t.el.className = "tile";
+        t.rec = rec; t.shown = false;
+        colour(t.el, rec);
+        if (revealing) showPicture(t);
       };
       if (!flip || reduceMotion) return swap();
       t.squash = 0.5;
       setTimeout(swap, 90);
     }
 
-    /* The ball shows only real pictures. A photo joins (or swaps in) once its little picture is ready, so there's
-       never an empty tile; photos Chrome can't show (HEIC, videos it can't open) stay out of the ball (they're
-       still counted, sorted and copied). Only if nothing at all can be shown do colour squares stand in. */
-    let gen = 0, pending = 0, swaps = 0, others = [], fallbackTimer = 0;
-    const SWAPS_WAITING = 6;   // while a big folder is read, only a few swaps wait at once, so photos joining the ball come first
-    const settled = () => state.phase === "sorting" || state.phase === "done";
-    function whenReady(rec, go, cancel) {
-      const g = gen;
-      if (rec.thumbUrl) return go();
-      S.thumb(rec, () => g === gen).then(u => {
-        if (g !== gen || settled()) return cancel && cancel();
-        if (!u) { rec.noThumb = true; cancel && cancel(); return otherwise(rec); }   // couldn't be read: leave it out
-        go();
-      });
-    }
-
-    // Photos that can't be shown: kept aside, used only if the ball would otherwise stay empty
-    function otherwise(rec) {
-      if (others.length < BALL_MAX) others.push(rec);
-      clearTimeout(fallbackTimer);
-      fallbackTimer = setTimeout(() => {
-        if (tiles.length || pending || settled()) return;
-        others.splice(0).forEach(r => { r.noThumb = true; place(r); });
-      }, 1500);
-    }
-
+    /* While photos are found and dates read, every photo joins at once as a colour square: no pictures are made,
+       so the ball fills as fast as the count. A fair random sample stays in it (reservoir sampling); a photo
+       swapped in on the front side flips, so the ball keeps visibly changing.
+       Once everything is read (reveal), the squares fade into real pictures one by one, front first. Photos
+       Chrome can't show (HEIC, videos it can't open) are swapped for ones it can, or leave the ball, so the
+       finished ball is real pictures only. */
+    let revealing = false;
     function add(rec) {
-      if (!S.canThumb(rec) || rec.noThumb) return otherwise(rec);
       seen++;
-      if (tiles.length + pending >= BALL_MAX) {
-        // Keep the ball a fair random sample of everything added (reservoir sampling).
-        // A swapped photo on the front side flips, so the ball keeps visibly filling.
-        const j = Math.floor(Math.random() * seen);
-        if (j < BALL_MAX && swaps < SWAPS_WAITING) {
-          swaps++;
-          whenReady(rec, () => { swaps--; const t = tiles[j % Math.max(1, tiles.length)]; if (t) setRec(t, rec, t.depth > 0.55); }, () => { swaps--; });
-        }
-        return;
+      if (tiles.length < BALL_MAX) return place(rec);
+      const j = Math.floor(Math.random() * seen);
+      if (j < BALL_MAX) { const t = tiles[j % tiles.length]; if (!t.gone) setRec(t, rec, t.depth > 0.55); }
+    }
+
+    function showPicture(t) {
+      const rec = t.rec;
+      if (t.shown) return;
+      if (!showable(rec)) return replace(t);
+      t.shown = true;
+      const put = u => {
+        if (t.rec !== rec || !t.el.isConnected) return;
+        if (!u) { rec.noThumb = true; t.shown = false; return replace(t); }
+        if (rec.kind === "video") { t.el.classList.add("vid"); const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "▶"; t.el.appendChild(lbl); }
+        if (reduceMotion) { t.el.style.backgroundImage = `url("${u}")`; return; }
+        // fade: the picture comes in on top of the colour, then becomes the tile's own picture
+        const pic = document.createElement("i");
+        pic.className = "pic";
+        pic.style.backgroundImage = `url("${u}")`;
+        t.el.prepend(pic);
+        pic.addEventListener("animationend", () => { if (t.rec === rec) t.el.style.backgroundImage = `url("${u}")`; pic.remove(); }, { once: true });
+      };
+      if (rec.thumbUrl) put(rec.thumbUrl);
+      else S.thumb(rec, () => t.rec === rec && t.el.isConnected).then(put);
+    }
+
+    // A tile whose photo can't show a picture: give it another photo that can, or let it leave the ball
+    let pool = [];
+    function replace(t) {
+      const inBall = new Set(tiles.map(x => x.rec));
+      while (pool.length) {
+        const r = pool.pop();
+        if (showable(r) && !inBall.has(r)) { setRec(t, r); return; }
       }
-      pending++;
-      whenReady(rec, () => { pending--; place(rec); }, () => { pending--; });
+      if (!t.gone && !settled()) release(t);
+    }
+    const settled = () => state.phase === "sorting" || state.phase === "done";
+
+    // Everything is read: turn the squares into pictures, front of the ball first
+    function reveal(files) {
+      if (settled()) return;
+      revealing = true;
+      const inBall = new Set(tiles.map(t => t.rec));
+      pool = files.filter(r => showable(r) && !inBall.has(r));
+      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+      [...tiles].sort((a, b) => b.depth - a.depth).forEach(showPicture);
     }
 
     function place(rec) {
       const el = document.createElement("div");
-      el.className = "tile" + (rec.kind === "video" ? " vid" : "");
-      const url = thumb(el, rec);
+      el.className = "tile";
+      colour(el, rec);
       orb.appendChild(el);
       // Budding: a new photo grows out of one already in the ball, which gives a little squeeze,
       // then glides to its own place while the others shift to make room. The first one grows from the middle.
       const parent = tiles.length ? tiles[Math.floor(Math.random() * tiles.length)] : null;
       if (parent) parent.squash = 0.22;
       tiles.push(parent
-        ? { rec, el, url, x: parent.x, y: parent.y, z: parent.z, s: 1, k: 0.07, squash: 0, depth: parent.depth }
-        : { rec, el, url, x: 0, y: 0, z: 0, s: 0, k: 0.12, squash: 0, depth: 0 });
+        ? { rec, el, x: parent.x, y: parent.y, z: parent.z, s: 1, k: 0.07, squash: 0, depth: parent.depth }
+        : { rec, el, x: 0, y: 0, z: 0, s: 0, k: 0.12, squash: 0, depth: 0 });
       layout();
       $("orbEmpty").hidden = true;
+      if (revealing) showPicture(tiles[tiles.length - 1]);
       start();
     }
 
     function clear() {
-      gen++; pending = 0; swaps = 0; others = []; clearTimeout(fallbackTimer);
-      tiles.concat(left).forEach(t => { t.el.remove(); if (t.url) URL.revokeObjectURL(t.url); });
+      revealing = false; pool = [];
+      tiles.concat(left).forEach(t => t.el.remove());
       tiles = []; left = [];
       seen = 0;
       orb.querySelectorAll(".done-badge").forEach(n => n.remove());
@@ -464,7 +467,7 @@
       if (tiles.length) layout(true);
     }
 
-    return { add, rebuild, clear, draw, takeFront, release, setRec, get tiles() { return tiles; } };
+    return { add, rebuild, clear, draw, takeFront, release, setRec, reveal, hold() { revealing = false; }, get revealing() { return revealing; }, get tiles() { return tiles; } };
   })();
 
   /* =========================================================
@@ -566,8 +569,9 @@
   // The ball shows the chosen photos; rebuilt only when the range changes after everything is read.
   let ballKey = "all||";
   function syncBall() {
-    if (state.phase !== "ready" || ballKey === rangeKey()) return;
-    Ball.rebuild(chosen()); ballKey = rangeKey();
+    if (state.phase !== "ready") return;
+    if (ballKey !== rangeKey()) { Ball.rebuild(chosen()); ballKey = rangeKey(); }
+    if (!Ball.revealing) Ball.reveal(chosen());   // everything read: the colour squares fade into pictures
   }
   // "4 screenshots and 2 documents kept apart"
   function specialNote(files) {
@@ -646,58 +650,116 @@
     rn.querySelectorAll(".dg").forEach((d, i) => d.style.setProperty("--d", digits[i]));
   }
 
-  function landOn(folder, tile) {
+  // Where a flying photo will land: the first empty spot, else take turns over the full ones.
+  function aimSlot(c) {
+    const free = c.slots.find(sl => !sl.style.backgroundImage && !sl.dataset.aim);
+    const slot = free || c.slots[(c.turn = ((c.turn || 0) + 1)) % c.slots.length];
+    slot.dataset.aim = "1";
+    return slot;
+  }
+
+  function landOn(folder, tile, slot) {
     const c = folder.card;
-    const slot = c.slots[Math.min(c.shown, c.slots.length - 1)];
+    slot = slot || aimSlot(c);
+    delete slot.dataset.aim;
     slot.style.backgroundImage = tile.el.style.backgroundImage;
-    slot.dataset.real = window.GalleryScan.canThumb(tile.rec) ? "1" : "";   // a real picture, not a colour square
-    // The photo flew before its little picture was ready: load it into the spot now
-    if (!slot.style.backgroundImage && window.GalleryScan.canThumb(tile.rec)) window.GalleryScan.thumb(tile.rec, () => slot.isConnected)
-      .then(u => { if (u && slot.isConnected && !slot.style.backgroundImage) slot.style.backgroundImage = `url("${u}")`; });
-    slot.classList.remove("filled"); void slot.offsetWidth; slot.classList.add("filled");
-    c.shown++; c.landed++;
+    const real = /^url\(/.test(slot.style.backgroundImage);
+    slot.dataset.real = real ? "1" : "";   // a real picture, not a colour square
+    // The photo flew as a colour square (its picture wasn't made yet): its picture fades in when ready
+    if (!real && window.GalleryScan.canThumb(tile.rec) && !tile.rec.noThumb) {
+      const bg = slot.style.backgroundImage;
+      window.GalleryScan.thumb(tile.rec, () => slot.isConnected).then(u => {
+        if (!u || !slot.isConnected || slot.style.backgroundImage !== bg) return;
+        slot.style.backgroundImage = `url("${u}")`; slot.dataset.real = "1";
+        slot.classList.remove("fade"); void slot.offsetWidth; slot.classList.add("fade");
+      });
+    }
+    slot.classList.remove("filled", "fade"); void slot.offsetWidth; slot.classList.add("filled");
+    c.landed++;
     (c.recs || (c.recs = new Set())).add(tile.rec);
     c.el.classList.add("hit");
     setTimeout(() => c.el.classList.remove("hit"), 170);
     if (!reduceMotion) c.el.animate([{ transform: "translateY(0)" }, { transform: "translateY(1.5px)", offset: .4 }, { transform: "translateY(0)" }], { duration: 300, easing: "ease-out" });
   }
 
-  function fly(tile, folder, spotlight) {
+  /* While sorting, each card fills in step with its count (a third full at a third), with other photos from
+     that folder: pictures already made first. A spot whose picture isn't ready yet waits as a soft square
+     and fades into the picture when it comes. So every card is full when the last photo lands. */
+  function growCard(folder, p, run) {
+    const c = folder.card, S = window.GalleryScan, n = c.slots.length;
+    const want = Math.min(n, Math.ceil(n * Math.min(1, p)));
+    let have = c.slots.filter(sl => sl.style.backgroundImage || sl.dataset.aim || sl.dataset.wait).length;
+    if (have >= want) return;
+    if (!c.pool) {
+      const recs = c.recs || (c.recs = new Set());
+      const ok = folder.files.filter(r => !recs.has(r) && S.canThumb(r) && !r.noThumb);
+      const step = Math.max(1, ok.length / 24), spread = [];
+      for (let i = 0; i < ok.length && spread.length < 24; i += step) spread.push(ok[Math.floor(i)]);
+      c.pool = spread.sort((a, b) => (!a.thumbUrl - !b.thumbUrl) || (a.kind === "video") - (b.kind === "video"));
+    }
+    for (const slot of c.slots) {
+      if (have >= want) break;
+      if (slot.style.backgroundImage || slot.dataset.aim || slot.dataset.wait) continue;
+      const rec = c.pool.shift();
+      if (!rec) break;
+      if (c.recs.has(rec)) continue;
+      c.recs.add(rec); have++;
+      const show = u => {
+        delete slot.dataset.wait;
+        if (!u || run !== sortRun || !slot.isConnected || slot.style.backgroundImage) return;
+        slot.style.backgroundImage = `url("${u}")`; slot.dataset.real = "1";
+        slot.classList.remove("fade"); void slot.offsetWidth; slot.classList.add("fade");
+      };
+      if (rec.thumbUrl) show(rec.thumbUrl);
+      else { slot.dataset.wait = "1"; S.thumb(rec, () => slot.isConnected).then(show); }
+    }
+  }
+
+  const FEW_DUST = matchMedia("(max-width: 600px)").matches;
+  function fly(tile, folder, detail) {
     return new Promise(resolve => {
       const rec = tile.rec, c = folder.card;
       const cap = $("caption");
       cap.innerHTML = `<span class="mono"></span> → <b></b>`;
       cap.querySelector(".mono").textContent = rec.name;
-      cap.querySelector("b").textContent = folder.name;
       cap.querySelector("b").textContent = rec.target.split("/").join(" › ");
-      if (spotlight) cap.insertAdjacentText("beforeend", ` · ${sourceWord[rec.dateSource]} ${fmtDate(rec.date)}${hasCountry() ? (rec.place ? " · GPS" : " · no GPS") : ""}`);
+      if (detail) cap.insertAdjacentText("beforeend", ` · ${sourceWord[rec.dateSource]} ${fmtDate(rec.date)}${hasCountry() ? (rec.place ? " · GPS" : " · no GPS") : ""}`);
       const a = relRect(tile.el);
       tile.el.classList.add("gone");
       Ball.release(tile);
-      if (reduceMotion) { landOn(folder, tile); return resolve(); }
-      const slot = c.slots[Math.min(c.shown, c.slots.length - 1)], z = relRect(slot), o = relRect($("orb"));
-      const w = a.w;
+      const slot = aimSlot(c);
+      if (reduceMotion) { landOn(folder, tile, slot); return resolve(); }
+      const z = relRect(slot), w = a.w, bg = tile.el.style.backgroundImage;
+      const cx = a.x + w / 2, cy = a.y + w / 2;
+      const toX = z.x + z.w / 2 - cx, toY = z.y + z.h / 2 - cy, s = z.w / w;
+      // A soft curve: up and out first, then easing into the spot
+      const lift = -Math.min(70, 30 + Math.abs(toX) * 0.12);
+      const path = (dx, dy, k) => [
+        { transform: `translate(${dx}px,${dy}px) scale(${k})` },
+        { transform: `translate(${toX * 0.45 + dx * 0.5}px,${toY * 0.45 + lift + dy * 0.5}px) scale(${(k + s) / 1.6})`, offset: 0.45 },
+        { transform: `translate(${toX}px,${toY}px) scale(${s})` }
+      ];
       const fl = document.createElement("div");
       fl.className = "flyer" + (rec.kind === "video" ? " vid" : "");
-      fl.style.cssText = `left:${a.x}px;top:${a.y}px;width:${w}px;height:${w}px;background-image:${tile.el.style.backgroundImage}`;
+      fl.style.cssText = `left:${a.x}px;top:${a.y}px;width:${w}px;height:${w}px;background-image:${bg}`;
       const lbl = tile.el.querySelector(".lbl");
       if (lbl) fl.appendChild(lbl.cloneNode(true));
       $("stage").appendChild(fl);
-      const cx = a.x + w / 2, cy = a.y + w / 2;
-      const toX = z.x + z.w / 2 - cx, toY = z.y + z.h / 2 - cy, s = z.w / w;
-      const midX = o.x + o.w / 2 - cx, midY = o.y + o.h / 2 - cy;
-      const frames = spotlight ? [
-        { transform: "translate(0,0) scale(1)", easing: "cubic-bezier(.3,0,.2,1)" },
-        { transform: `translate(${midX}px,${midY}px) scale(2.6)`, offset: 0.3 },
-        { transform: `translate(${midX}px,${midY}px) scale(2.6)`, offset: 0.62, easing: "cubic-bezier(.5,0,.2,1)" },
-        { transform: `translate(${toX}px,${toY}px) scale(${s})` }
-      ] : [
-        { transform: "translate(0,0) scale(1)" },
-        { transform: `translate(${toX * 0.5}px,${toY * 0.5 - 50}px) scale(${(1 + s) / 1.5})`, offset: 0.5 },
-        { transform: `translate(${toX}px,${toY}px) scale(${s})` }
-      ];
-      const anim = fl.animate(frames, { duration: spotlight ? 2000 : 650, easing: spotlight ? "linear" : "cubic-bezier(.45,0,.2,1)", fill: "forwards" });
-      anim.onfinish = () => { fl.remove(); landOn(folder, tile); resolve(); };
+      // Dust: little copies of the same picture trail behind it and melt into the card, so the air feels full
+      for (let d = 0; d < (FEW_DUST ? 1 : 2); d++) {
+        const dust = document.createElement("div");
+        dust.className = "flyer dust";
+        dust.style.cssText = `left:${a.x}px;top:${a.y}px;width:${w}px;height:${w}px;background-image:${bg}`;
+        $("stage").appendChild(dust);
+        const k = 0.35 + Math.random() * 0.2, jx = (Math.random() - .5) * w * 1.6, jy = (Math.random() - .5) * w * 1.6;
+        const f = path(jx, jy, k);
+        f[0].opacity = 0; f[1].opacity = 0.85; f[2].opacity = 0;
+        f[2].transform = `translate(${toX + jx * 0.2}px,${toY + jy * 0.2}px) scale(${s * 0.5})`;
+        dust.animate(f, { duration: 1000 + Math.random() * 300, delay: 40 + Math.random() * 160, easing: "cubic-bezier(.25,.6,.3,1)", fill: "backwards" })
+          .onfinish = () => dust.remove();
+      }
+      const anim = fl.animate(path(0, 0, 1), { duration: 900, easing: "cubic-bezier(.25,.6,.3,1)", fill: "forwards" });
+      anim.onfinish = () => { fl.remove(); landOn(folder, tile, slot); resolve(); };
     });
   }
 
@@ -710,7 +772,7 @@
       // Real pictures replace empty spots and colour squares (photos Chrome can't show, like HEIC); photos first, then video frames
       const photos = f.files.filter(r => r.kind === "photo" && !have.has(r) && S.canThumb(r));
       const pool = photos.length >= 6 ? photos : photos.concat(f.files.filter(r => r.kind === "video" && !have.has(r) && S.canThumb(r)));
-      const empty = c.slots.filter(s => !s.dataset.real).slice(0, pool.length);   // never the same photo twice
+      const empty = c.slots.filter(s => !s.dataset.real && !s.dataset.wait).slice(0, pool.length);   // never the same photo twice
       if (!empty.length) continue;
       const step = pool.length / empty.length;
       empty.forEach((slot, i) => {
@@ -722,7 +784,6 @@
           slot.classList.add("fade");
         });
       });
-      c.shown = c.slots.length;
     }
   }
 
@@ -758,14 +819,20 @@
     ensureEveryFolderFlies(folders);
     const flights = Ball.tiles.length;
     const total = chosen().length;
-    const gap = Math.max(35, Math.min(170, 6500 / Math.max(1, flights)));
-    let landed = 0;
+    // Many photos in the air at once: a new one leaves every ~60ms and each flies for 0.9s, no pause at the start
+    const gap = Math.max(30, Math.min(110, 5500 / Math.max(1, flights)));
+    let landed = 0, queued = false;
     const updateCounts = () => {
       const p = landed / flights;
-      for (const f of folders) rollNum(f.card.count, Math.min(f.files.length, Math.max(f.card.landed, Math.round(f.files.length * p))));
+      for (const f of folders) {
+        rollNum(f.card.count, Math.min(f.files.length, Math.max(f.card.landed, Math.round(f.files.length * p))));
+        growCard(f, p, run);
+      }
       $("progressBar").style.width = (p * 100) + "%";
       $("headline").innerHTML = `Sorting <em class="mark">${fmt(Math.round(total * p))} of ${fmt(total)}</em>`;
     };
+    // Numbers and cards update a few times a second, not after every photo
+    const soon = () => { if (queued) return; queued = true; setTimeout(() => { queued = false; if (run === sortRun && state.phase === "sorting") updateCounts(); }, 140); };
     $("progress").hidden = false;
     $("headline").innerHTML = `Sorting <em class="mark">0 of ${fmt(total)}</em>`;
     const pending = [];
@@ -773,13 +840,13 @@
       if (run !== sortRun) return;
       const tile = Ball.takeFront();
       if (!tile) break;
-      const spotlight = i < 2 && flights > 6;
-      const p = fly(tile, byKey.get(tile.rec.folderKey), spotlight).then(() => { if (run === sortRun) { landed++; updateCounts(); } });
+      const p = fly(tile, byKey.get(tile.rec.folderKey), i < 2).then(() => { if (run === sortRun) { landed++; soon(); } });
       pending.push(p);
-      if (spotlight) await p; else await sleep(reduceMotion ? 10 : gap);
+      await sleep(reduceMotion ? 10 : gap);
     }
     await Promise.all(pending);
     if (run !== sortRun) return;
+    updateCounts();
     folders.forEach(f => rollNum(f.card.count, f.files.length));
     fillCards(folders, run);
     state.phase = "done";
@@ -876,9 +943,13 @@
     }
 
     if (state.phase === "ready") syncBall();
+    else if (state.phase === "reading" && Ball.revealing) Ball.hold();   // more photos coming: no pictures until they're read
     const picked = chosen(), n = picked.length;
 
-    setStat("stTotal", total); setStat("stPhotos", photos); setStat("stVideos", videos);
+    // While dates are read, the big number counts them up to the total ("401 · of 3,891 dates read")
+    const readingDates = state.phase === "reading" && !scanning && dated < total;
+    setStat("stTotal", readingDates ? dated : total); setStat("stPhotos", photos);
+    $("totalK").textContent = readingDates ? `of ${fmt(total)} dates read` : "total"; setStat("stVideos", videos);
     setStat("stFolders", state.phase === "done" || state.phase === "sorting" ? state.targets : 0);
     $("sortBtn").disabled = !((state.phase === "ready" && n > 0) || state.phase === "done");
     $("stepLine").textContent = state.phase === "empty" ? "Step 1 of 4 · Add photos" : state.phase === "reading" ? (state.paused && state.roots.some(r => r.scanning) ? "Step 1 of 4 · Paused" : "Step 1 of 4 · Reading photos") : "Step 2 of 4 · Sort";
